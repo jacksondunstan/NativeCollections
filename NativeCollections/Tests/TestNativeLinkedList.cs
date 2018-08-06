@@ -12,6 +12,10 @@ namespace NativeCollections.Tests
 	/// <author>
 	/// Jackson Dunstan, http://JacksonDunstan.com/articles/4865
 	/// </author>
+	/// 
+	/// <license>
+	/// MIT
+	/// </license.
     public class TestNativeLinkedList
     {
         // Assert general invariants of the type

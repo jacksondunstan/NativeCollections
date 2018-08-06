@@ -12,6 +12,10 @@ namespace NativeCollections
 	/// <author>
 	/// Jackson Dunstan, http://JacksonDunstan.com/articles/4865
 	/// </author>
+	/// 
+	/// <license>
+	/// MIT
+	/// </license.
 	public struct NativeLinkedListIterator
 	{
 		/// <summary>
@@ -136,6 +140,10 @@ namespace NativeCollections
 	/// <author>
 	/// Jackson Dunstan, http://JacksonDunstan.com/articles/4865
 	/// </author>
+	/// 
+	/// <license>
+	/// MIT
+	/// </license.
 	[NativeContainer]
 	[NativeContainerSupportsMinMaxWriteRestriction]
 	[DebuggerDisplay("count = {count}. Capacity = {Capacity}")]
