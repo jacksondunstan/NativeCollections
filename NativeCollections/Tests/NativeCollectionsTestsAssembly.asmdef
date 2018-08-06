@@ -1,0 +1,14 @@
+{
+    "name": "NativeCollectionsTestsAssembly",
+    "references": [
+        "NativeCollectionsAssembly"
+    ],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true
+}
