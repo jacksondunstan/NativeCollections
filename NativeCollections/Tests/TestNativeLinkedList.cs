@@ -1,5 +1,6 @@
 ﻿using NUnit.Framework;
 using Unity.Collections;
+using Unity.Jobs;
 
 namespace NativeCollections.Tests
 {
@@ -687,5 +688,46 @@ namespace NativeCollections.Tests
                 }
             }
         }
+
+		private struct TestJob : IJob
+		{
+			public NativeLinkedList<int> List;
+			public NativeArray<int> Sum;
+
+			public void Execute()
+			{
+				for (NativeLinkedListIterator it = List.GetHead();
+					 List.IsValid(it);
+				     it = List.GetNext(it))
+				{
+					Sum[0] += List.GetData(it);
+				}
+			}
+		}
+
+		[Test]
+		public void JobCanIterateOverLinkedList()
+		{
+			using (NativeLinkedList<int> list = new NativeLinkedList<int>(
+				3,
+				Allocator.Temp))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+
+				using (NativeArray<int> sum = new NativeArray<int>(
+					1,
+					Allocator.Temp))
+				{
+					TestJob job = new TestJob { List = list, Sum = sum };
+					job.Run();
+
+					Assert.That(sum[0], Is.EqualTo(60));
+				}
+
+				AssertGeneralInvariants(list);
+			}
+		}
     }
 }
