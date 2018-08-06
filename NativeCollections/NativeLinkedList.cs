@@ -8,6 +8,10 @@ namespace NativeCollections
 	/// <summary>
 	/// An iterator for <see cref="NativeLinkedList{T}"/>
 	/// </summary>
+	/// 
+	/// <author>
+	/// Jackson Dunstan, http://JacksonDunstan.com/articles/4865
+	/// </author>
 	public struct NativeLinkedListIterator
 	{
 		/// <summary>
@@ -130,7 +134,7 @@ namespace NativeCollections
 	/// </typeparam>
 	///
 	/// <author>
-	/// Jackson Dunstan, http://JacksonDunstan.com/articles/4734
+	/// Jackson Dunstan, http://JacksonDunstan.com/articles/4865
 	/// </author>
 	[NativeContainer]
 	[NativeContainerSupportsMinMaxWriteRestriction]

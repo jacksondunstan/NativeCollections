@@ -7,6 +7,10 @@ namespace NativeCollections.Tests
     /// Unit tests for <see cref="NativeLinkedList{T}"/> and
     /// <see cref="NativeLinkedListIterator"/>
     /// </summary>
+	/// 
+	/// <author>
+	/// Jackson Dunstan, http://JacksonDunstan.com/articles/4865
+	/// </author>
     public class TestNativeLinkedList
     {
         // Assert general invariants of the type
