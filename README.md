@@ -5,3 +5,7 @@ A small library of native collections like `NativeArray<T>` suitable to be used 
 # Usage
 
 Clone this repository somewhere inside your Unity project's `Assets` directory.
+
+# License
+
+MIT
