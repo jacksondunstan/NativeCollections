@@ -1,4 +1,4 @@
-﻿using NUnit.Framework;
+using NUnit.Framework;
 using Unity.Collections;
 using Unity.Jobs;
 
@@ -15,9 +15,15 @@ namespace NativeCollections.Tests
 	/// 
 	/// <license>
 	/// MIT
-	/// </license.
+	/// </license>
     public class TestNativeLinkedList
     {
+		// Create a list of int with the given capacity
+		private static NativeLinkedList<int> CreateList(int capacity)
+		{
+			return new NativeLinkedList<int>(capacity, Allocator.Temp);
+		}
+
         // Assert general invariants of the type
         private static void AssertGeneralInvariants(NativeLinkedList<int> list)
         {
@@ -85,153 +91,380 @@ namespace NativeCollections.Tests
         }
         
         [Test]
-        public void PushBackIncreasesCount()
+        public void PushBackIncreasesCountAndCapacityReturnsAddedNodeIterator()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+            using (NativeLinkedList<int> list = CreateList(3))
             {
                 Assert.That(list.Count, Is.EqualTo(0));
+				Assert.That(list.Capacity, Is.EqualTo(3));
                 
-                list.PushBack(10);
+				NativeLinkedListIterator it10 = list.PushBack(10);
                 Assert.That(list.Count, Is.EqualTo(1));
+				Assert.That(list.Capacity, Is.EqualTo(3));
+				Assert.That(list.GetData(it10), Is.EqualTo(10));
                 
-                list.PushBack(20);
+				NativeLinkedListIterator it20 = list.PushBack(20);
                 Assert.That(list.Count, Is.EqualTo(2));
+				Assert.That(list.Capacity, Is.EqualTo(3));
+				Assert.That(list.GetData(it20), Is.EqualTo(20));
                 
-                list.PushBack(30);
+				NativeLinkedListIterator it30 = list.PushBack(30);
                 Assert.That(list.Count, Is.EqualTo(3));
+				Assert.That(list.Capacity, Is.EqualTo(3));
+				Assert.That(list.GetData(it30), Is.EqualTo(30));
                 
-                list.PushBack(40);
+				NativeLinkedListIterator it40 = list.PushBack(40);
                 Assert.That(list.Count, Is.EqualTo(4));
+				Assert.That(list.Capacity, Is.GreaterThan(3));
+				Assert.That(list.GetData(it40), Is.EqualTo(40));
                 
-                list.PushBack(50);
-                Assert.That(list.Count, Is.EqualTo(5));
-                
+				NativeLinkedListIterator it50 = list.PushBack(50);
+				Assert.That(list.Count, Is.EqualTo(5));
+				Assert.That(list.Capacity, Is.GreaterThan(3));
+				Assert.That(list.GetData(it50), Is.EqualTo(50));
+
                 AssertGeneralInvariants(list);
             }
         }
         
+		[Test]
+		public void PushListBackIncreasesCountAndCapacityReturnsHeadIterator()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				using (NativeLinkedList<int> pushList = CreateList(2))
+				{
+					pushList.PushBack(10);
+					pushList.PushBack(20);
+
+					NativeLinkedListIterator it = list.PushBack(pushList);
+
+					Assert.That(list.Count, Is.EqualTo(2));
+					Assert.That(list.Capacity, Is.EqualTo(3));
+					Assert.That(list.GetData(it), Is.EqualTo(10));
+				}
+
+				using (NativeLinkedList<int> pushList = CreateList(3))
+				{
+					pushList.PushBack(30);
+					pushList.PushBack(40);
+					pushList.PushBack(50);
+
+					NativeLinkedListIterator it = list.PushBack(pushList);
+
+					Assert.That(list.Count, Is.EqualTo(5));
+					Assert.That(list.Capacity, Is.GreaterThan(3));
+					Assert.That(list.GetData(it), Is.EqualTo(30));
+				}
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
         [Test]
-        public void PushBackWhenFullIncreasesCapacity()
+        public void PushFrontIncreasesCountAndCapacityReturnsAddedNodeIterator()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
-            {
-                Assert.That(list.Capacity, Is.EqualTo(3));
-                
-                list.PushBack(10);
-                Assert.That(list.Capacity, Is.EqualTo(3));
-                
-                list.PushBack(20);
-                Assert.That(list.Capacity, Is.EqualTo(3));
-                
-                list.PushBack(30);
-                Assert.That(list.Capacity, Is.EqualTo(3));
-                
-                list.PushBack(40);
-                Assert.That(list.Capacity, Is.GreaterThan(3));
-                
-                list.PushBack(50);
-                Assert.That(list.Capacity, Is.GreaterThan(3));
-                
-                AssertGeneralInvariants(list);
-            }
-        }
-        
-        [Test]
-        public void PushBackReturnsIteratorToAddedNode()
-        {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
-            {
-                NativeLinkedListIterator it = list.PushBack(10);
-                
-                Assert.That(list.GetData(it), Is.EqualTo(10));
-                
-                AssertGeneralInvariants(list);
-            }
-        }
-        
-        [Test]
-        public void PushFrontIncreasesCount()
-        {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
             {
                 Assert.That(list.Count, Is.EqualTo(0));
-                
-                list.PushFront(10);
+				Assert.That(list.Capacity, Is.EqualTo(3));
+
+				NativeLinkedListIterator it10 = list.PushFront(10);
                 Assert.That(list.Count, Is.EqualTo(1));
-                
-                list.PushFront(20);
+				Assert.That(list.Capacity, Is.EqualTo(3));
+				Assert.That(list.GetData(it10), Is.EqualTo(10));
+
+				NativeLinkedListIterator it20 = list.PushFront(20);
                 Assert.That(list.Count, Is.EqualTo(2));
-                
-                list.PushFront(30);
+				Assert.That(list.Capacity, Is.EqualTo(3));
+				Assert.That(list.GetData(it20), Is.EqualTo(20));
+
+				NativeLinkedListIterator it30 = list.PushFront(30);
                 Assert.That(list.Count, Is.EqualTo(3));
-                
-                list.PushFront(40);
+				Assert.That(list.Capacity, Is.EqualTo(3));
+				Assert.That(list.GetData(it30), Is.EqualTo(30));
+
+				NativeLinkedListIterator it40 = list.PushFront(40);
                 Assert.That(list.Count, Is.EqualTo(4));
-                
-                list.PushFront(50);
+				Assert.That(list.Capacity, Is.GreaterThan(3));
+				Assert.That(list.GetData(it40), Is.EqualTo(40));
+
+				NativeLinkedListIterator it50 = list.PushFront(50);
                 Assert.That(list.Count, Is.EqualTo(5));
-                
+				Assert.That(list.Capacity, Is.GreaterThan(3));
+				Assert.That(list.GetData(it50), Is.EqualTo(50));
+
                 AssertGeneralInvariants(list);
             }
         }
         
-        [Test]
-        public void PushFrontWhenFullIncreasesCapacity()
-        {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
-            {
-                Assert.That(list.Capacity, Is.EqualTo(3));
-                
-                list.PushFront(10);
-                Assert.That(list.Capacity, Is.EqualTo(3));
-                
-                list.PushFront(20);
-                Assert.That(list.Capacity, Is.EqualTo(3));
-                
-                list.PushFront(30);
-                Assert.That(list.Capacity, Is.EqualTo(3));
-                
-                list.PushFront(40);
-                Assert.That(list.Capacity, Is.GreaterThan(3));
-                
-                list.PushFront(50);
-                Assert.That(list.Capacity, Is.GreaterThan(3));
-                
-                AssertGeneralInvariants(list);
-            }
-        }
-        
-        [Test]
-        public void PushFrontReturnsIteratorToAddedNode()
-        {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
-            {
-                NativeLinkedListIterator it = list.PushFront(10);
-                
-                Assert.That(list.GetData(it), Is.EqualTo(10));
-                
-                AssertGeneralInvariants(list);
-            }
-        }
+		[Test]
+		public void InsertAfterInsertsNodeAfterGivenIterator()
+		{
+			using (NativeLinkedList<int> list = CreateList(5))
+			{
+				list.PushBack(10);
+				NativeLinkedListIterator insert = list.PushBack(20);
+				list.PushBack(40);
+				list.PushBack(50);
+
+				NativeLinkedListIterator ret = list.InsertAfter(insert, 30);
+
+				Assert.That(list.GetData(ret), Is.EqualTo(30));
+				Assert.That(
+					list.ToArray(),
+					Is.EqualTo(new[] { 10, 20, 30, 40, 50 }));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertAfterTailUpdatesTail()
+		{
+			using (NativeLinkedList<int> list = CreateList(5))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				NativeLinkedListIterator insert = list.PushBack(40);
+
+				NativeLinkedListIterator ret = list.InsertAfter(insert, 50);
+
+				Assert.That(list.GetData(ret), Is.EqualTo(50));
+				Assert.That(list.GetData(list.GetTail()), Is.EqualTo(50));
+				Assert.That(
+					list.ToArray(),
+					Is.EqualTo(new[] { 10, 20, 30, 40, 50 }));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertListAfterInsertsNodeAfterGivenIterator()
+		{
+			using (NativeLinkedList<int> list = CreateList(5))
+			{
+				list.PushBack(10);
+				NativeLinkedListIterator insert = list.PushBack(20);
+				list.PushBack(60);
+				list.PushBack(70);
+
+				using (NativeLinkedList<int> insertList = CreateList(3))
+				{
+					insertList.PushBack(30);
+					insertList.PushBack(40);
+					insertList.PushBack(50);
+
+					NativeLinkedListIterator ret = list.InsertAfter(
+						insert,
+						insertList);
+
+					Assert.That(list.GetData(ret), Is.EqualTo(30));
+					Assert.That(
+						list.ToArray(),
+						Is.EqualTo(new[] { 10, 20, 30, 40, 50, 60, 70 }));
+
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertListAfterTailUpdatesTail()
+		{
+			using (NativeLinkedList<int> list = CreateList(5))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				NativeLinkedListIterator insert = list.PushBack(30);
+
+				using (NativeLinkedList<int> insertList = CreateList(3))
+				{
+					insertList.PushBack(40);
+					insertList.PushBack(50);
+					insertList.PushBack(60);
+
+					NativeLinkedListIterator ret = list.InsertAfter(
+						insert,
+						insertList);
+
+					Assert.That(list.GetData(ret), Is.EqualTo(40));
+					Assert.That(list.GetData(list.GetTail()), Is.EqualTo(60));
+					Assert.That(
+						list.ToArray(),
+						Is.EqualTo(new[] { 10, 20, 30, 40, 50, 60 }));
+
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertBeforeInsertsNodeBeforeGivenIterator()
+		{
+			using (NativeLinkedList<int> list = CreateList(5))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				NativeLinkedListIterator insert = list.PushBack(40);
+				list.PushBack(50);
+
+				NativeLinkedListIterator ret = list.InsertBefore(insert, 30);
+
+				Assert.That(list.GetData(ret), Is.EqualTo(30));
+				Assert.That(
+					list.ToArray(),
+					Is.EqualTo(new[] { 10, 20, 30, 40, 50 }));
+				Assert.That(
+					list.ToArrayReverse(),
+					Is.EqualTo(new[] { 50, 40, 30, 20, 10 }));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertBeforeHeadUpdatesHead()
+		{
+			using (NativeLinkedList<int> list = CreateList(5))
+			{
+				NativeLinkedListIterator insert = list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				list.PushBack(50);
+
+				NativeLinkedListIterator ret = list.InsertBefore(insert, 10);
+
+				Assert.That(list.GetData(ret), Is.EqualTo(10));
+				Assert.That(list.GetData(list.GetHead()), Is.EqualTo(10));
+				Assert.That(
+					list.ToArray(),
+					Is.EqualTo(new[] { 10, 20, 30, 40, 50 }));
+				Assert.That(
+					list.ToArrayReverse(),
+					Is.EqualTo(new[] { 50, 40, 30, 20, 10 }));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertListBeforeInsertsNodeAfterGivenIterator()
+		{
+			using (NativeLinkedList<int> list = CreateList(5))
+			{
+				list.PushBack(10);
+				NativeLinkedListIterator insert = list.PushBack(50);
+				list.PushBack(60);
+				list.PushBack(70);
+
+				using (NativeLinkedList<int> insertList = CreateList(3))
+				{
+					insertList.PushBack(20);
+					insertList.PushBack(30);
+					insertList.PushBack(40);
+
+					NativeLinkedListIterator ret = list.InsertBefore(
+						insert,
+						insertList);
+
+					Assert.That(list.GetData(ret), Is.EqualTo(40));
+					Assert.That(
+						list.ToArray(),
+						Is.EqualTo(new[] { 10, 20, 30, 40, 50, 60, 70 }));
+
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertListBeforeTailUpdatesTail()
+		{
+			using (NativeLinkedList<int> list = CreateList(5))
+			{
+				NativeLinkedListIterator insert = list.PushBack(40);
+				list.PushBack(50);
+				list.PushBack(60);
+
+				using (NativeLinkedList<int> insertList = CreateList(3))
+				{
+					insertList.PushBack(10);
+					insertList.PushBack(20);
+					insertList.PushBack(30);
+
+					NativeLinkedListIterator ret = list.InsertBefore(
+						insert,
+						insertList);
+
+					Assert.That(list.GetData(ret), Is.EqualTo(30));
+					Assert.That(list.GetData(list.GetTail()), Is.EqualTo(60));
+					Assert.That(
+						list.ToArray(),
+						Is.EqualTo(new[] { 10, 20, 30, 40, 50, 60 }));
+
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void IndexerGetReturnsWhatIsSet()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+
+				NativeLinkedList<int> copy = list;
+				copy[1] = 200;
+				int ret = copy[1];
+
+				Assert.That(ret, Is.EqualTo(200));
+
+				AssertGeneralInvariants(copy);
+			}
+		}
+
+		[Test]
+		public void SortNodeMemoryAddressesPreservesOrderButSortsMemory()
+		{
+			using (NativeLinkedList<int> list = new NativeLinkedList<int>(
+				3,
+				Allocator.Temp))
+			{
+				NativeLinkedListIterator it10 = list.PushBack(10);
+				NativeLinkedListIterator it20 = list.PushBack(20);
+				NativeLinkedListIterator it30 = list.PushBack(30);
+				list.Remove(it10);
+				// data = [ 30, 20, _ ]
+				//          t   h
+				NativeLinkedListIterator it5 = list.PushBack(5);
+				// data = [ 30, 20, 5 ]
+				//              h   t
+
+				list.SortNodeMemoryAddresses();
+
+				Assert.That(list[0], Is.EqualTo(20));
+				Assert.That(list[1], Is.EqualTo(30));
+				Assert.That(list[2], Is.EqualTo(5));
+				Assert.That(list.IsValid(it10), Is.False);
+				Assert.That(list.IsValid(it20), Is.False);
+				Assert.That(list.IsValid(it30), Is.False);
+				Assert.That(list.IsValid(it5), Is.False);
+				Assert.That(list.ToArray(), Is.EqualTo(new [] { 20, 30, 5 }));
+
+				AssertGeneralInvariants(list);
+			}
+		}
     
         [Test]
         public void GetHeadReturnsInvalidIteratorForEmptyList()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
             {
                 NativeLinkedListIterator it = list.GetHead();
                 
@@ -244,9 +477,7 @@ namespace NativeCollections.Tests
         [Test]
         public void GetTailReturnsInvalidIteratorForEmptyList()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
             {
                 NativeLinkedListIterator it = list.GetTail();
                 
@@ -259,9 +490,7 @@ namespace NativeCollections.Tests
         [Test]
         public void GetNextTraversesListForward()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
             {
                 list.PushBack(10);
                 list.PushBack(20);
@@ -305,9 +534,7 @@ namespace NativeCollections.Tests
         [Test]
         public void GetPrevTraversesListBackward()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
             {
                 list.PushBack(10);
                 list.PushBack(20);
@@ -351,9 +578,7 @@ namespace NativeCollections.Tests
         [Test]
         public void SetDataSetsNodeData()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
             {
                 list.PushBack(10);
                 list.PushBack(20);
@@ -388,44 +613,20 @@ namespace NativeCollections.Tests
         [Test]
         public void RemoveDoesNothingWhenIteratorIsInvalid()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
             {
-                list.PushBack(10);
-                list.PushBack(20);
-                list.PushBack(30);
+				NativeLinkedListIterator it10 = list.PushBack(10);
+				NativeLinkedListIterator it20 = list.PushBack(20);
+				NativeLinkedListIterator it30 = list.PushBack(30);
 
                 NativeLinkedListIterator invalid = NativeLinkedListIterator.MakeInvalid();
                 NativeLinkedListIterator ret = list.Remove(invalid);
                 
                 Assert.That(list.IsValid(ret), Is.False);
-				NativeLinkedListIterator it = list.GetHead();
-				Assert.That(list.GetData(it), Is.EqualTo(10));
-				it = list.GetNext(it);
-				Assert.That(list.GetData(it), Is.EqualTo(20));
-				it = list.GetNext(it);
-				Assert.That(list.GetData(it), Is.EqualTo(30));
-                
-                AssertGeneralInvariants(list);
-            }
-        }
-        
-        [Test]
-        public void RemoveDoesNothingWhenListIsEmpty()
-        {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
-            {
-                list.PushBack(10);
-                NativeLinkedListIterator it = list.GetHead();
-                list.Remove(it);
-
-                NativeLinkedListIterator ret = list.Remove(it);
-                
-                Assert.That(list.IsValid(ret), Is.False);
-                Assert.That(list.Count, Is.EqualTo(0));
+				Assert.That(list.IsValid(it10), Is.True);
+				Assert.That(list.IsValid(it20), Is.True);
+				Assert.That(list.IsValid(it30), Is.True);
+				Assert.That(list.ToArray(), Is.EqualTo(new [] { 10, 20, 30 }));
                 
                 AssertGeneralInvariants(list);
             }
@@ -434,13 +635,10 @@ namespace NativeCollections.Tests
         [Test]
         public void RemoveOnlyNodeEmptiesList()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
             {
-                list.PushBack(10);
+				NativeLinkedListIterator it = list.PushBack(10);
                 
-                NativeLinkedListIterator it = list.GetHead();
                 list.Remove(it);
 
                 Assert.That(list.IsValid(it), Is.False);
@@ -455,13 +653,11 @@ namespace NativeCollections.Tests
         [Test]
         public void RemoveHeadLeavesRemainingNodesReturnsNext()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
             {
-                list.PushBack(10);
-                list.PushBack(20);
-                list.PushBack(30);
+				NativeLinkedListIterator it10 = list.PushBack(10);
+				NativeLinkedListIterator it20 = list.PushBack(20);
+				NativeLinkedListIterator it30 = list.PushBack(30);
                 
                 NativeLinkedListIterator next = list.Remove(list.GetHead());
                 
@@ -469,17 +665,10 @@ namespace NativeCollections.Tests
                 Assert.That(list.Count, Is.EqualTo(2));
                 Assert.That(list.GetData(list.GetHead()), Is.EqualTo(20));
                 Assert.That(list.GetData(list.GetTail()), Is.EqualTo(30));
-                
-                NativeLinkedListIterator it = list.GetHead();
-                Assert.That(list.IsValid(it), Is.True);
-                Assert.That(list.GetData(it), Is.EqualTo(20));
-                
-                it = list.GetNext(it);
-                Assert.That(list.IsValid(it), Is.True);
-                Assert.That(list.GetData(it), Is.EqualTo(30));
-                
-                it = list.GetNext(it);
-                Assert.That(list.IsValid(it), Is.False);
+				Assert.That(list.IsValid(it10), Is.False);
+				Assert.That(list.IsValid(it20), Is.False);
+				Assert.That(list.IsValid(it30), Is.False);
+				Assert.That(list.ToArray(), Is.EqualTo(new [] { 20, 30 }));
                 
                 AssertGeneralInvariants(list);
             }
@@ -488,14 +677,12 @@ namespace NativeCollections.Tests
         [Test]
         public void RemoveHeadWhenNotFirstElementLeavesRemainingNodesReturnsNext()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                4,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(4))
             {
-                list.PushBack(10);
-                list.PushBack(20);
-                list.PushBack(30);
-                list.PushBack(40);
+				NativeLinkedListIterator it10 = list.PushBack(10);
+				NativeLinkedListIterator it20 = list.PushBack(20);
+				NativeLinkedListIterator it30 = list.PushBack(30);
+				NativeLinkedListIterator it40 = list.PushBack(40);
                 // array is now [10, 20, 30, 40]
                 // head = 0, tail = 3
                 
@@ -513,6 +700,11 @@ namespace NativeCollections.Tests
                 Assert.That(list.IsValid(list.GetPrev(list.GetHead())), Is.False);
                 Assert.That(list.GetData(list.GetTail()), Is.EqualTo(40));
                 Assert.That(list.IsValid(list.GetNext(list.GetTail())), Is.False);
+				Assert.That(list.IsValid(it10), Is.False);
+				Assert.That(list.IsValid(it20), Is.False);
+				Assert.That(list.IsValid(it30), Is.False);
+				Assert.That(list.IsValid(it40), Is.False);
+				Assert.That(list.ToArray(), Is.EqualTo(new[] { 30, 40 }));
                 
                 AssertGeneralInvariants(list);
             }
@@ -521,13 +713,11 @@ namespace NativeCollections.Tests
         [Test]
         public void RemoveTailLeavesRemainingNodesReturnsPrev()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
             {
-                list.PushBack(10);
-                list.PushBack(20);
-                list.PushBack(30);
+				NativeLinkedListIterator it10 = list.PushBack(10);
+				NativeLinkedListIterator it20 = list.PushBack(20);
+				NativeLinkedListIterator it30 = list.PushBack(30);
                 
                 NativeLinkedListIterator prev = list.Remove(list.GetTail());
                 
@@ -535,17 +725,10 @@ namespace NativeCollections.Tests
                 Assert.That(list.Count, Is.EqualTo(2));
                 Assert.That(list.GetData(list.GetHead()), Is.EqualTo(10));
                 Assert.That(list.GetData(list.GetTail()), Is.EqualTo(20));
-                
-                NativeLinkedListIterator it = list.GetHead();
-                Assert.That(list.IsValid(it), Is.True);
-                Assert.That(list.GetData(it), Is.EqualTo(10));
-                
-                it = list.GetNext(it);
-                Assert.That(list.IsValid(it), Is.True);
-                Assert.That(list.GetData(it), Is.EqualTo(20));
-                
-                it = list.GetNext(it);
-                Assert.That(list.IsValid(it), Is.False);
+				Assert.That(list.IsValid(it10), Is.False);
+				Assert.That(list.IsValid(it20), Is.False);
+				Assert.That(list.IsValid(it30), Is.False);
+				Assert.That(list.ToArray(), Is.EqualTo(new[] { 10, 20 }));
                 
                 AssertGeneralInvariants(list);
             }
@@ -554,14 +737,12 @@ namespace NativeCollections.Tests
         [Test]
         public void RemoveTailWhenNotLastElementLeavesRemainingNodesReturnsPrev()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                4,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(4))
             {
-                list.PushBack(10);
-                list.PushBack(20);
-                list.PushBack(30);
-                list.PushBack(40);
+				NativeLinkedListIterator it10 = list.PushBack(10);
+				NativeLinkedListIterator it20 = list.PushBack(20);
+				NativeLinkedListIterator it30 = list.PushBack(30);
+				NativeLinkedListIterator it40 = list.PushBack(40);
                 // array is now [10, 20, 30, 40]
                 // head = 0, tail = 3
                 
@@ -579,6 +760,11 @@ namespace NativeCollections.Tests
                 Assert.That(list.IsValid(list.GetPrev(list.GetHead())), Is.False);
                 Assert.That(list.GetData(list.GetTail()), Is.EqualTo(30));
                 Assert.That(list.IsValid(list.GetNext(list.GetTail())), Is.False);
+				Assert.That(list.IsValid(it10), Is.False);
+				Assert.That(list.IsValid(it20), Is.False);
+				Assert.That(list.IsValid(it30), Is.False);
+				Assert.That(list.IsValid(it40), Is.False);
+				Assert.That(list.ToArray(), Is.EqualTo(new[] { 20, 30 }));
                 
                 AssertGeneralInvariants(list);
             }
@@ -587,32 +773,22 @@ namespace NativeCollections.Tests
         [Test]
         public void RemoveMiddleLeavesRemainingNodesReturnsPrev()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
             {
-                list.PushBack(10);
-                list.PushBack(20);
-                list.PushBack(30);
+				NativeLinkedListIterator it10 = list.PushBack(10);
+				NativeLinkedListIterator it20 = list.PushBack(20);
+				NativeLinkedListIterator it30 = list.PushBack(30);
                 
-                NativeLinkedListIterator middle = list.GetNext(list.GetHead());
-                NativeLinkedListIterator prev = list.Remove(middle);
+                NativeLinkedListIterator prev = list.Remove(it20);
                 
                 Assert.That(list.GetData(prev), Is.EqualTo(10));
                 Assert.That(list.Count, Is.EqualTo(2));
                 Assert.That(list.GetData(list.GetHead()), Is.EqualTo(10));
                 Assert.That(list.GetData(list.GetTail()), Is.EqualTo(30));
-                
-                NativeLinkedListIterator it = list.GetHead();
-                Assert.That(list.IsValid(it), Is.True);
-                Assert.That(list.GetData(it), Is.EqualTo(10));
-                
-                it = list.GetNext(it);
-                Assert.That(list.IsValid(it), Is.True);
-                Assert.That(list.GetData(it), Is.EqualTo(30));
-                
-                it = list.GetNext(it);
-                Assert.That(list.IsValid(it), Is.False);
+				Assert.That(list.IsValid(it10), Is.False);
+				Assert.That(list.IsValid(it20), Is.False);
+				Assert.That(list.IsValid(it30), Is.False);
+				Assert.That(list.ToArray(), Is.EqualTo(new[] { 10, 30 }));
                 
                 AssertGeneralInvariants(list);
             }
@@ -621,9 +797,7 @@ namespace NativeCollections.Tests
         [Test]
         public void ToArrayReturnsNodeDataInOrder()
         {
-            using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
             {
                 list.PushBack(10);
                 list.PushBack(20);
@@ -638,11 +812,26 @@ namespace NativeCollections.Tests
 		}
 
 		[Test]
+		public void ToArrayReverseReturnsNodeDataInReverseOrder()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+
+				int[] arr = list.ToArrayReverse();
+
+				Assert.That(arr, Is.EqualTo(new[] { 30, 20, 10 }));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
 		public void CopyToNativeArrayFillsGivenArray()
 		{
-			using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-				5,
-				Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(5))
 			{
 				list.PushBack(10);
 				list.PushBack(20);
@@ -669,9 +858,7 @@ namespace NativeCollections.Tests
         [Test]
         public void DisposeMakesIsCreatedReturnsFalse()
         {
-            NativeLinkedList<int> list = new NativeLinkedList<int>(
-                3,
-                Allocator.Temp);
+			NativeLinkedList<int> list = CreateList(3);
             bool isDisposed = false;
             try
             {
@@ -681,8 +868,6 @@ namespace NativeCollections.Tests
                 isDisposed = true;
 
                 Assert.That(list.IsCreated, Is.False);
-                
-                AssertGeneralInvariants(list);
             }
             finally
             {
@@ -712,9 +897,7 @@ namespace NativeCollections.Tests
 		[Test]
 		public void JobCanIterateOverLinkedList()
 		{
-			using (NativeLinkedList<int> list = new NativeLinkedList<int>(
-				3,
-				Allocator.Temp))
+			using (NativeLinkedList<int> list = CreateList(3))
 			{
 				list.PushBack(10);
 				list.PushBack(20);
