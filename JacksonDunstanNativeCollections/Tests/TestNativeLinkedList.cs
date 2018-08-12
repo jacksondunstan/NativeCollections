@@ -1684,5 +1684,43 @@ namespace JacksonDunstan.NativeCollections.Tests
 				AssertGeneralInvariants(list);
 			}
 		}
+
+		private struct ParallelForTestJob : IJobParallelFor
+		{
+			public NativeLinkedList<int> List;
+			public NativeArray<int> Sum;
+
+			public void Execute(int index)
+			{
+				Sum[0] += List[index];
+			}
+		}
+
+		[Test]
+		public void ParallelForJobCanIterateOverLinkedList()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+
+				using (NativeArray<int> sum = new NativeArray<int>(
+					1,
+					Allocator.Temp))
+				{
+					ParallelForTestJob job = new ParallelForTestJob
+					{
+						List = list,
+						Sum = sum
+					};
+					job.Run(list.Length);
+
+					Assert.That(sum[0], Is.EqualTo(60));
+				}
+
+				AssertGeneralInvariants(list);
+			}
+		}
     }
 }

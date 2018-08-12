@@ -1,3 +1,0 @@
-# Hack to ignore all files that relies on the assumption that they always have a
-# dot in the file name
-*.*

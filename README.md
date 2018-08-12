@@ -4,7 +4,7 @@ A small library of native collections like `NativeArray<T>` suitable to be used 
 
 # Usage
 
-Clone or download this repository somewhere inside your Unity project's `Assets` directory.
+Clone or download this repository and copy the `JacksonDunstanNativeCollections` directory somewhere inside your Unity project's `Assets` directory.
 
 # License
 
