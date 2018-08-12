@@ -1,145 +1,76 @@
+//-----------------------------------------------------------------------
+// <copyright file="NativeLinkedList.cs" company="Jackson Dunstan">
+//     Copyright (c) Jackson Dunstan. See LICENSE.txt.
+// </copyright>
+//-----------------------------------------------------------------------
+
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
-namespace NativeCollections
+namespace JacksonDunstan.NativeCollections
 {
 	/// <summary>
-	/// An iterator for <see cref="NativeLinkedList{T}"/>
+	/// The state of a <see cref="NativeLinkedList{T}"/>. Shared among instances
+	/// of the struct via a pointer to unmanaged memory. This has no type
+	/// parameters, so it can be used by all list types.
 	/// </summary>
-	/// 
-	/// <author>
-	/// Jackson Dunstan, http://JacksonDunstan.com/articles/4865
-	/// </author>
-	/// 
-	/// <license>
-	/// MIT
-	/// </license>
-	public struct NativeLinkedListIterator
+	internal unsafe struct NativeLinkedListState
 	{
 		/// <summary>
-		/// Index of the node
+		/// Each node's data. Indices correspond with nextIndexes.
 		/// </summary>
-		internal readonly int Index;
+		internal void* Datas;
 
 		/// <summary>
-		/// Version of the list that this iterator is valid for
+		/// Each node's next node index. Indices correspond with datas.
 		/// </summary>
-		internal readonly int Version;
-		
-		/// <summary>
-		/// Create the iterator for a particular node
-		/// </summary>
-		/// 
-		/// <param name="index">
-		/// Index of the node. Out-of-bounds values are OK.
-		/// </param>
-		/// 
-		/// <param name="version">
-		/// Version of the list that this iterator is valid for
-		/// </param>
-		internal NativeLinkedListIterator(int index, int version)
-		{
-			Index = index;
-			Version = version;
-		}
-		
-		/// <summary>
-		/// Make an iterator that is invalid for all lists.
-		///
-		/// This operation is O(1).
-		/// </summary>
-		/// 
-		/// <returns>
-		/// An iterator that is invalid for all lists
-		/// </returns>
-		public static NativeLinkedListIterator MakeInvalid()
-		{
-			return new NativeLinkedListIterator(-1, -1);
-		}
-		
-		/// <summary>
-		/// Check if two iterators refer to the same node. This has no meaning
-		/// if either iterator is invalid or the iterators are for different
-		/// lists.
-		/// </summary>
-		/// 
-		/// <param name="itA">
-		/// First iterator to compare
-		/// </param>
-		/// <param name="itB">
-		/// Second iterator to compare
-		/// </param>
-		/// 
-		/// <returns>
-		/// If the given iterators refer to the same node
-		/// </returns>
-		public static bool operator==(
-			NativeLinkedListIterator itA,
-			NativeLinkedListIterator itB)
-		{
-			return itA.Index == itB.Index;
-		}
-		
-		/// <summary>
-		/// Check if two iterators refer to different nodes. This has no meaning
-		/// if either iterator is invalid or the iterators are for different
-		/// lists.
-		/// </summary>
-		/// 
-		/// <param name="itA">
-		/// First iterator to compare
-		/// </param>
-		/// 
-		/// <param name="itB">
-		/// Second iterator to compare
-		/// </param>
-		/// 
-		/// <returns>
-		/// If the given iterators refer to different nodes
-		/// </returns>
-		public static bool operator!=(
-			NativeLinkedListIterator itA,
-			NativeLinkedListIterator itB)
-		{
-			return itA.Index != itB.Index;
-		}
+		internal int* NextIndexes;
 
 		/// <summary>
-		/// Check if this iterator refer to the same node as another iterator.
-		/// This has no meaning if either iterator is invalid or the iterators
-		/// are for different lists.
+		/// Each node's previous node index. Indices correspond with datas.
 		/// </summary>
-		/// 
-		/// <param name="obj">
-		/// Iterator to compare with
-		/// </param>
-		/// 
-		/// <returns>
-		/// If the given iterator refers to the same node as this iterator and
-		/// is of the same type.
-		/// </returns>
-		public override bool Equals(object obj)
-		{
-			return obj is NativeLinkedListIterator
-				&& ((NativeLinkedListIterator)obj).Index == Index;
-		}
+		internal int* PrevIndexes;
 
 		/// <summary>
-		/// Get a hash code for this iterator
+		/// Index of the first node in the list or -1 if there are no nodes in
+		/// the list
 		/// </summary>
-		/// 
-		/// <returns>
-		/// A hash code for this iterator
-		/// </returns>
-		public override int GetHashCode()
-		{
-			return Index;
-		}
+		internal int HeadIndex;
+
+		/// <summary>
+		/// Index of the last node in the list or -1 if there are no nodes in
+		/// the list
+		/// </summary>
+		internal int TailIndex;
+
+		/// <summary>
+		/// Number of nodes contained
+		/// </summary>
+		internal int Length;
+
+		/// <summary>
+		/// Number of nodes that can be contained
+		/// </summary>
+		internal int Capacity;
+
+		/// <summary>
+		/// Version of enumerators that are valid for this list. This starts at
+		/// 1 and increases by one with each change that invalidates the list's
+		/// enumerators.
+		/// </summary>
+		internal int Version;
+
+		/// <summary>
+		/// Allocator used to create the backing arrays
+		/// </summary>
+		internal Allocator Allocator;
 	}
-	
+
 	/// <summary>
 	/// A doubly-linked list native collection.
 	/// </summary>
@@ -147,83 +78,457 @@ namespace NativeCollections
 	/// <typeparam name="T">
 	/// Type of nodes in the list. Must be blittable.
 	/// </typeparam>
-	///
-	/// <author>
-	/// Jackson Dunstan, http://JacksonDunstan.com/articles/4865
-	/// </author>
-	/// 
-	/// <license>
-	/// MIT
-	/// </license>
 	[NativeContainer]
 	[NativeContainerSupportsMinMaxWriteRestriction]
-	[DebuggerDisplay("Count = {Count}. Capacity = {Capacity}")]
+	[DebuggerDisplay("Length = {Length}. Capacity = {Capacity}")]
 	[DebuggerTypeProxy(typeof(NativeLinkedListDebugView<>))]
 	[StructLayout(LayoutKind.Sequential)]
-	public unsafe struct NativeLinkedList<T> : IDisposable
+	public unsafe struct NativeLinkedList<T>
+		: IEnumerable<T>
+		, IEnumerable
+		, IDisposable
 		where T : struct
 	{
-		// Each node's data. Indices correspond with nextIndexes.
-		private NativeArray<T> datas;
-		
-		// Each node's next node index. Indices correspond with datas.
-		private NativeArray<int> nextIndexes;
-		
-		// Each node's previous node index. Indices correspond with datas.
-		private NativeArray<int> prevIndexes;
-		
-		// Allocator used to create the backing array
-		private readonly Allocator allocator;
-		
-		// Index of the first node in the list or -1 if there are no nodes in
-		// the list
-		private int headIndex;
-	
-		// Index of the last node in the list or -1 if there are no nodes in
-		// the list
-		private int tailIndex;
-		
-		// Number of nodes contained
-		private int count;
+		/// <summary>
+		/// An enumerator for <see cref="NativeLinkedList{T}"/>
+		/// </summary>
+		public unsafe struct Enumerator
+			: IEnumerator<T>
+			, IEnumerator
+			, IDisposable
+		{
+			/// <summary>
+			/// Index of the node
+			/// </summary>
+			internal int Index;
 
-		// Number of nodes that can be contained
-		private int capacity;
+			/// <summary>
+			/// Version of the list that this enumerator is valid for
+			/// </summary>
+			internal int Version;
 
-		// Version of iterators that are valid for this list. This starts at 1
-		// and increases by one with each change that invalidates iterators.
-		private int version;
-		
-		// These are all required when checks are enabled
+			/// <summary>
+			/// List to iterate
+			/// </summary>
+			internal NativeLinkedList<T> list;
+
+			/// <summary>
+			/// Create the enumerator for a particular node
+			/// </summary>
+			/// 
+			/// <param name="list">
+			/// List to iterate
+			/// </param>
+			/// 
+			/// <param name="index">
+			/// Index of the node. Out-of-bounds values are OK.
+			/// </param>
+			/// 
+			/// <param name="version">
+			/// Version of the list that this enumerator is valid for
+			/// </param>
+			internal Enumerator(
+				NativeLinkedList<T> list,
+				int index,
+				int version)
+			{
+				Index = index;
+				Version = version;
+				this.list = list;
+			}
+
+			/// <summary>
+			/// Make an enumerator that is invalid for all lists.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// An enumerator that is invalid for all lists
+			/// </returns>
+			public static Enumerator MakeInvalid()
+			{
+				return new Enumerator(
+					default(NativeLinkedList<T>),
+					-1,
+					-1);
+			}
+
+			/// <summary>
+			/// Get an enumerator to the next node or an invalid enumerator if
+			/// this enumerator is at the tail of the list or is invalid.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// An enumerator to the next node or an invalid enumerator if this
+			/// enumerator is at the tail of the list or is invalid.
+			/// </returns>
+			public Enumerator Next
+			{
+				get
+				{
+					list.RequireValidState();
+					list.RequireReadAccess();
+
+					if (IsValid)
+					{
+						list.RequireIndexInBounds(Index);
+						return new Enumerator(
+							list,
+							list.state->NextIndexes[Index],
+							Version);
+					}
+					return MakeInvalid();
+				}
+			}
+
+			/// <summary>
+			/// Get an enumerator to the previous node or an invalid enumerator
+			/// if this enumerator is at the head of the list or is invalid.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// An enumerator to the previous node or an invalid enumerator if
+			/// this enumerator is at the head of the list or is invalid.
+			/// </returns>
+			public Enumerator Prev
+			{
+				get
+				{
+					list.RequireValidState();
+					list.RequireReadAccess();
+
+					if (IsValid)
+					{
+						list.RequireIndexInBounds(Index);
+						return new Enumerator(
+							list,
+							list.state->PrevIndexes[Index],
+							Version);
+					}
+					return MakeInvalid();
+				}
+			}
+
+			/// <summary>
+			/// Move to the next node or invalid this enumerator if at the tail.
+			/// This function has no effect if this enumerator is invalid.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// If this enumerator is still valid
+			/// </returns>
+			public bool MoveNext()
+			{
+				list.RequireValidState();
+				list.RequireReadAccess();
+
+				if (IsValid)
+				{
+					list.RequireIndexInBounds(Index);
+					Index = list.state->NextIndexes[Index];
+					return Index >= 0;
+				}
+
+				// Invalidate
+				Index = -1;
+				Version = -1;
+				list = default(NativeLinkedList<T>);
+				return false;
+			}
+
+			/// <summary>
+			/// Move to the previous node or invalid this enumerator if at the
+			/// head. This function has no effect if this enumerator is invalid.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// If this iterator is still valid
+			/// </returns>
+			public bool MovePrev()
+			{
+				list.RequireValidState();
+				list.RequireReadAccess();
+
+				if (IsValid)
+				{
+					list.RequireIndexInBounds(Index);
+					Index = list.state->PrevIndexes[Index];
+					return Index >= 0;
+				}
+
+				// Invalidate
+				Index = -1;
+				Version = -1;
+				list = default(NativeLinkedList<T>);
+				return false;
+			}
+
+			/// <summary>
+			/// Check if an enumerator is valid
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// If the given enumerator is valid
+			/// </returns>
+			public bool IsValid
+			{
+				get
+				{
+					return Index >= 0
+						&& list.state != null
+						&& Index < list.state->Length
+						&& Version == list.state->Version;
+				}
+			}
+
+			/// <summary>
+			/// Check if two enumerators refer to the same node lists.
+			/// 
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <param name="a">
+			/// First enumerator to compare
+			/// </param>
+			/// 
+			/// <param name="b">
+			/// Second enumerator to compare
+			/// </param>
+			/// 
+			/// <returns>
+			/// If the given enumerators refer to the same node and neither
+			/// enumerator is invalid.
+			/// </returns>
+			public static bool operator ==(Enumerator a, Enumerator b)
+			{
+				return a.IsValid
+					&& b.IsValid
+					&& a.Index == b.Index
+					&& a.list.state == b.list.state;
+			}
+
+			/// <summary>
+			/// Check if two enumerators refer to different nodes.
+			/// 
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <param name="a">
+			/// First enumerator to compare
+			/// </param>
+			/// 
+			/// <param name="b">
+			/// Second enumerator to compare
+			/// </param>
+			/// 
+			/// <returns>
+			/// If the given enumerators refer to different nodes or either
+			/// enumerator is invalid.
+			/// </returns>
+			public static bool operator !=(Enumerator a, Enumerator b)
+			{
+				return !a.IsValid
+					|| !b.IsValid
+					|| a.Index != b.Index
+					|| a.list.state != b.list.state;
+			}
+
+			/// <summary>
+			/// Check if this enumerator refer to the same node as another
+			/// enumerator.
+			/// 
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <param name="obj">
+			/// Enumerator to compare with
+			/// </param>
+			/// 
+			/// <returns>
+			/// If the given enumerator refers to the same node as this
+			/// enumerator and is of the same type and neither enumerator is
+			/// invalid.
+			/// </returns>
+			public override bool Equals(object obj)
+			{
+				return obj is Enumerator && this == (Enumerator)obj;
+			}
+
+			/// <summary>
+			/// Get a hash code for this enumerator. If the enumerator is
+			/// mutated such as by calling <see cref="MoveNext"/>, the returned
+			/// hash code will no longer match values returned by subsequent
+			/// calls to this function.
+			/// 
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// A hash code for this enumerator
+			/// </returns>
+			public override int GetHashCode()
+			{
+				// Suppress "non-readonly field" warning because we don't have a
+				// readonly-only way to generate a hash code since Index is
+				// mutable to comply with the IEnumerator interface.
+#pragma warning disable RECS0025
+				return Index;
+#pragma warning restore RECS0025
+			}
+
+			/// <summary>
+			/// Dispose the enumerator. This operation has no effect and exists
+			/// only to satisfy the requirements of <see cref="IDisposable"/>.
+			/// 
+			/// This operation is O(1).
+			/// </summary>
+			public void Dispose()
+			{
+			}
+
+			/// <summary>
+			/// Reset the enumerator to the head of the list or invalidate it if
+			/// the list is empty. This function has no effect if this
+			/// enumerator is already invalid.
+			/// 
+			/// This operation is O(1).
+			/// </summary>
+			public void Reset()
+			{
+				if (IsValid)
+				{
+					list.RequireValidState();
+					list.RequireReadAccess();
+					Index = list.state->HeadIndex;
+				}
+			}
+
+			/// <summary>
+			/// Get or set a node's data
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <value>
+			/// The node's value. If the enumerator is invalid, the default
+			/// is returned in the 'get' case and the 'set' has no effect.
+			/// </value>
+			public T Current
+			{
+				get
+				{
+					if (IsValid)
+					{
+						list.RequireValidState();
+						list.RequireReadAccess();
+						list.RequireIndexInBounds(Index);
+						return UnsafeUtility.ReadArrayElement<T>(
+							list.state->Datas,
+							Index);
+					}
+					return default(T);
+				}
+
+				[WriteAccessRequired]
+				set
+				{
+					if (IsValid)
+					{
+						list.RequireValidState();
+						list.RequireWriteAccess();
+						list.RequireIndexInBounds(Index);
+						UnsafeUtility.WriteArrayElement(
+							list.state->Datas,
+							Index,
+							value);
+					}
+				}
+			}
+
+			/// <summary>
+			/// Get a node's data. Prefer using the generic version of
+			/// <see cref="Current"/> as this will cause boxing when enumerating
+			/// value type node data. This is provided only for compatibility
+			/// with <see cref="IEnumerator"/>. As such, there is no 'set' for
+			/// this non-generic property.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <value>
+			/// The node's value or null if this enumerator is invalid.
+			/// </value>
+			object IEnumerator.Current
+			{
+				get
+				{
+					if (IsValid)
+					{
+						list.RequireValidState();
+						list.RequireReadAccess();
+						list.RequireIndexInBounds(Index);
+						return UnsafeUtility.ReadArrayElement<T>(
+							list.state->Datas,
+							Index);
+					}
+					return null;
+				}
+			}
+		}
+
+		/// <summary>
+		/// State of the list or null after being disposed. This is shared among
+		/// all instances of the list.
+		/// </summary>
+		[NativeDisableUnsafePtrRestriction]
+		private NativeLinkedListState* state;
+
+		// These fields are all required when safety checks are enabled
 		// They must have these exact types, names, attributes, and order
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 		// ReSharper disable once MemberCanBePrivate.Global
 		// ReSharper disable once InconsistentNaming
 		internal int m_Length;
+
 		// ReSharper disable once MemberCanBePrivate.Global
 		// ReSharper disable once FieldCanBeMadeReadOnly.Global
 		// ReSharper disable once InconsistentNaming
 		internal int m_MinIndex;
+
 		// ReSharper disable once MemberCanBePrivate.Global
 		// ReSharper disable once InconsistentNaming
 		internal int m_MaxIndex;
+
 		// ReSharper disable once MemberCanBePrivate.Global
 		// ReSharper disable once InconsistentNaming
 		internal AtomicSafetyHandle m_Safety;
-		
+
 		// ReSharper disable once MemberCanBePrivate.Global
 		// ReSharper disable once InconsistentNaming
 		[NativeSetClassTypeToNullOnSchedule]
 		internal DisposeSentinel m_DisposeSentinel;
 #endif
-	 
+
 		/// <summary>
 		/// Create the list with an initial capacity. It initially has no nodes.
 		///
-		/// This operation is O(1).
+		/// This complexity of this operation is O(1) plus the allocator's
+		/// allocation complexity.
 		/// </summary>
 		/// 
 		/// <param name="capacity">
-		/// Initial capacity. This will be doubled if too many nodes are added.
+		/// Initial capacity. If less than four, four is used.
 		/// </param>
 		/// 
 		/// <param name="allocator">
@@ -231,43 +536,57 @@ namespace NativeCollections
 		/// </param>
 		public NativeLinkedList(int capacity, Allocator allocator)
 		{
+			// Insist on a minimum capacity
+			if (capacity < 4)
+			{
+				capacity = 4;
+			}
+
+			// Allocate the state. It is freed in Dispose().
+			state = (NativeLinkedListState*)UnsafeUtility.Malloc(
+				sizeof(NativeLinkedListState),
+				UnsafeUtility.AlignOf<NativeLinkedListState>(),
+				allocator);
+
 			// Create the backing arrays. There's no need to clear them since we
 			// make no assumptions about the contents anyways.
-			datas = new NativeArray<T>(
-				capacity,
-				allocator,
-				NativeArrayOptions.UninitializedMemory);
-			nextIndexes = new NativeArray<int>(
-				capacity,
-				allocator,
-				NativeArrayOptions.UninitializedMemory);
-			prevIndexes = new NativeArray<int>(
-				capacity,
-				allocator,
-				NativeArrayOptions.UninitializedMemory);
-			this.allocator = allocator;
+			state->Datas = UnsafeUtility.Malloc(
+				UnsafeUtility.SizeOf<T>() * capacity,
+				UnsafeUtility.AlignOf<T>(),
+				allocator
+			);
+			state->NextIndexes = (int*)UnsafeUtility.Malloc(
+				sizeof(int) * capacity,
+				UnsafeUtility.AlignOf<int>(),
+				allocator);
+			state->PrevIndexes = (int*)UnsafeUtility.Malloc(
+				sizeof(int) * capacity,
+				UnsafeUtility.AlignOf<int>(),
+				allocator);
+
+			state->Allocator = allocator;
 
 			// Initially empty with the given capacity
-			count = 0;
-			this.capacity = capacity;
-			headIndex = -1;
-			tailIndex = -1;
+			state->Length = 0;
+			state->Capacity = capacity;
+			state->HeadIndex = -1;
+			state->TailIndex = -1;
 
 			// Version starts at one so that the default (0) is never used
-			version = 1;
-	
+			state->Version = 1;
+
 			// Initialize safety ranges
-	#if ENABLE_UNITY_COLLECTIONS_CHECKS
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
 			m_Length = 0;
 			m_MinIndex = 0;
 			m_MaxIndex = -1;
 			DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0);
-	#endif
+#endif
 		}
-	 
+
 		/// <summary>
 		/// Get the capacity of the list. This is always greater than or equal
-		/// to its <see cref="count"/>.
+		/// to its <see cref="Length"/>.
 		///
 		/// This operation is O(1).
 		/// </summary>
@@ -275,7 +594,8 @@ namespace NativeCollections
 		{
 			get
 			{
-				return capacity;
+				RequireValidState();
+				return state->Capacity;
 			}
 		}
 
@@ -285,167 +605,101 @@ namespace NativeCollections
 		///
 		/// This operation is O(1).
 		/// </summary>
-		// ReSharper disable once ConvertToAutoPropertyWithPrivateSetter
-		public int Count
+		public int Length
 		{
 			get
 			{
-				return count;
+				RequireValidState();
+				return state->Length;
 			}
 		}
 
 		/// <summary>
-		/// Get an iterator to the head of the list or an invalid iterator if
-		/// the list is empty.
+		/// Get an enumerator to the head of the list or an invalid enumerator
+		/// if the list is empty.
+		/// 
+		/// This operation is O(1).
 		/// </summary>
 		/// 
-		/// <returns>
-		/// An iterator to the head of the list or an invalid iterator if the
-		/// list is empty.
-		///
-		/// This operation is O(1).
-		/// </returns>
-		public NativeLinkedListIterator GetHead()
+		/// <value>
+		/// An enumerator to the head of the list or an invalid enumerator if
+		/// the list is empty.
+		/// </value>
+		public Enumerator Head
 		{
-			return new NativeLinkedListIterator(headIndex, version);
+			get
+			{
+				RequireValidState();
+				return new Enumerator(this, state->HeadIndex, state->Version);
+			}
 		}
 
 		/// <summary>
-		/// Get an iterator to the tailI of the list or an invalid iterator if
+		/// Get an enumerator to the tailI of the list or an invalid enumerator
+		/// if the list is empty.
+		///
+		/// This operation is O(1).
+		/// </summary>
+		/// 
+		/// <value>
+		/// An enumerator to the tailI of the list or an invalid enumerator if
 		/// the list is empty.
-		///
-		/// This operation is O(1).
-		/// </summary>
-		/// 
-		/// <returns>
-		/// An iterator to the tailI of the list or an invalid iterator if the
-		/// list is empty.
-		/// </returns>
-		public NativeLinkedListIterator GetTail()
+		/// </value>
+		public Enumerator Tail
 		{
-			return new NativeLinkedListIterator(tailIndex, version);
-		}
-		
-		/// <summary>
-		/// Get an iterator to the next node or an invalid iterator if the
-		/// given iterator is at the tail of the list or is invalid.
-		///
-		/// This operation is O(1).
-		/// </summary>
-		/// 
-		/// <param name="it">
-		/// Iterator to get the next node's iterator for
-		/// </param>
-		/// 
-		/// <returns>
-		/// An iterator to the next node or an invalid iterator if the
-		/// given iterator is at the tail of the list or is invalid.
-		/// </returns>
-		public NativeLinkedListIterator GetNext(NativeLinkedListIterator it)
-		{
-			RequireReadAccess();
-			
-			if (IsValid(it))
+			get
 			{
-				FailIfIndexOutOfCheckBounds(it.Index);
-				int nextIndex = nextIndexes[it.Index];
-				return new NativeLinkedListIterator(nextIndex, version);
-			}
-	
-			return NativeLinkedListIterator.MakeInvalid();
-		}
-		
-		/// <summary>
-		/// Get an iterator to the previous node or an invalid iterator if the
-		/// given iterator is at the head of the list or is invalid.
-		///
-		/// This operation is O(1).
-		/// </summary>
-		/// 
-		/// <param name="it">
-		/// Iterator to get the previous node's iterator for
-		/// </param>
-		/// 
-		/// <returns>
-		/// An iterator to the previous node or an invalid iterator if the
-		/// given iterator is at the head of the list or is invalid.
-		/// </returns>
-		public NativeLinkedListIterator GetPrev(NativeLinkedListIterator it)
-		{
-			RequireReadAccess();
-			
-			if (IsValid(it))
-			{
-				FailIfIndexOutOfCheckBounds(it.Index);
-				int prevIndex = prevIndexes[it.Index];
-				return new NativeLinkedListIterator(prevIndex, version);
-			}
-			
-			return NativeLinkedListIterator.MakeInvalid();
-		}
-		
-		/// <summary>
-		/// Get a node's data
-		///
-		/// This operation is O(1).
-		/// </summary>
-		/// 
-		/// <param name="it">
-		/// Iterator to get the data for. If invalid, this returns default(T).
-		/// </param>
-		/// 
-		/// <returns>
-		/// The data for the given iterator or default(T) if the given iterator
-		/// is invalid.
-		/// </returns>
-		public T GetData(NativeLinkedListIterator it)
-		{
-			RequireReadAccess();
-			FailIfIndexOutOfCheckBounds(it.Index);
-			return IsValid(it) ? datas[it.Index] : default(T);
-		}
-		
-		/// <summary>
-		/// Set a node's data
-		///
-		/// This operation is O(1).
-		/// </summary>
-		/// 
-		/// <param name="it">
-		/// Iterator to the node whose data should be set. If invalid, this
-		/// function has no effect.
-		/// </param>
-		/// 
-		/// <param name="data">
-		/// Data to set for the node
-		/// </param>
-		[WriteAccessRequired]
-		public void SetData(NativeLinkedListIterator it, T data)
-		{
-			RequireWriteAccess();
-			FailIfIndexOutOfCheckBounds(it.Index);
-			if (IsValid(it))
-			{
-				datas[it.Index] = data;
+				RequireValidState();
+				return new Enumerator(this, state->TailIndex, state->Version);
 			}
 		}
-		
+
 		/// <summary>
-		/// Check if an iterator is valid
-		///
+		/// Get an enumerator to the head of the list or an invalid enumerator
+		/// if the list is empty.
+		/// 
 		/// This operation is O(1).
 		/// </summary>
 		/// 
-		/// <param name="it">
-		/// Iterator to check
-		/// </param>
-		/// 
-		/// <returns>
-		/// If the given iterator is valid
-		/// </returns>
-		public bool IsValid(NativeLinkedListIterator it)
+		/// <value>
+		/// An enumerator to the head of the list or an invalid enumerator if
+		/// the list is empty.
+		/// </value>
+		public Enumerator GetEnumerator()
 		{
-			return it.Index >= 0 && it.Index < count && it.Version == version;
+			return Head;
+		}
+
+		/// <summary>
+		/// Get an enumerator to the head of the list or an invalid enumerator
+		/// if the list is empty.
+		/// 
+		/// This operation is O(1).
+		/// </summary>
+		/// 
+		/// <value>
+		/// An enumerator to the head of the list or an invalid enumerator if
+		/// the list is empty.
+		/// </value>
+		IEnumerator<T> IEnumerable<T>.GetEnumerator()
+		{
+			return Head;
+		}
+
+		/// <summary>
+		/// Get an enumerator to the head of the list or an invalid enumerator
+		/// if the list is empty.
+		/// 
+		/// This operation is O(1).
+		/// </summary>
+		/// 
+		/// <value>
+		/// An enumerator to the head of the list or an invalid enumerator if
+		/// the list is empty.
+		/// </value>
+		IEnumerator IEnumerable.GetEnumerator()
+		{
+			return Head;
 		}
 
 		/// <summary>
@@ -458,23 +712,25 @@ namespace NativeCollections
 		/// 
 		/// <param name="index">
 		/// Index of the node to get or set. Must be greater than or equal to
-		/// zero and less than <see cref="Count"/>.
+		/// zero and less than <see cref="Length"/>.
 		/// </param>
 		public T this[int index]
 		{
 			get
 			{
+				RequireValidState();
 				RequireReadAccess();
-				FailIfIndexOutOfCheckBounds(index);
-				return datas[index];
+				RequireIndexInBounds(index);
+				return UnsafeUtility.ReadArrayElement<T>(state->Datas, index);
 			}
 
 			[WriteAccessRequired]
 			set
 			{
+				RequireValidState();
 				RequireWriteAccess();
-				FailIfIndexOutOfCheckBounds(index);
-				datas[index] = value;
+				RequireIndexInBounds(index);
+				UnsafeUtility.WriteArrayElement(state->Datas, index, value);
 			}
 		}
 
@@ -482,10 +738,11 @@ namespace NativeCollections
 		/// Add an node to the end of the list. If the list is full, it will be
 		/// automatically resized by allocating new unmanaged memory with double
 		/// the <see cref="Capacity"/> and copying over all existing nodes. Any
-		/// existing iterators will _not_ be invalidated.
+		/// existing enumerators will _not_ be invalidated.
 		///
-		/// This operation is O(1) when the list isn't full (i.e.
-		/// <see cref="Count"/> == <see cref="Capacity"/>) and O(N) when it is.
+		/// This operation is O(1) when the list has enough capacity to hold the
+		/// added node or O(N) plus the allocator's deallocation and
+		/// allocation complexity when it doesn't.
 		/// </summary>
 		/// 
 		/// <param name="value">
@@ -493,65 +750,68 @@ namespace NativeCollections
 		/// </param>
 		///
 		/// <returns>
-		/// An iterator to the added node
+		/// An enumerator to the added node
 		/// </returns>
 		[WriteAccessRequired]
-		public NativeLinkedListIterator PushBack(T value)
+		public Enumerator PushBack(T value)
 		{
+			RequireValidState();
 			RequireReadAccess();
 			RequireWriteAccess();
 
 			// The list is full. Resize.
-			if (count == capacity)
+			if (state->Length == state->Capacity)
 			{
-				IncreaseCapacity(count * 2);
+				IncreaseCapacity(state->Length * 2);
 			}
-	 
+
 			// Insert at the end
-			int insertIndex = count;
-			datas[insertIndex] = value;
-			nextIndexes[insertIndex] = -1;
-			prevIndexes[insertIndex] = tailIndex;
-			
+			int insertIndex = state->Length;
+			RequireIndexInBounds(insertIndex);
+			UnsafeUtility.WriteArrayElement(state->Datas, insertIndex, value);
+			state->NextIndexes[insertIndex] = -1;
+			state->PrevIndexes[insertIndex] = state->TailIndex;
+
 			// The list was empty, so this is the head and the tail now
-			if (headIndex < 0)
+			if (state->HeadIndex < 0)
 			{
-				headIndex = insertIndex;
-				tailIndex = insertIndex;
+				state->HeadIndex = insertIndex;
+				state->TailIndex = insertIndex;
 			}
 			// The list wasn't empty, so point the tail at the added node and
 			// point the added node at the tail
 			else
 			{
-				nextIndexes[tailIndex] = insertIndex;
-				prevIndexes[insertIndex] = tailIndex;
+				RequireIndexInBounds(state->TailIndex);
+				state->NextIndexes[state->TailIndex] = insertIndex;
+				RequireIndexInBounds(insertIndex);
+				state->PrevIndexes[insertIndex] = state->TailIndex;
 			}
-			
+
 			// The added node is now the tail
-			tailIndex = insertIndex;
+			state->TailIndex = insertIndex;
 
 			// Update safety ranges
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-			m_Length = insertIndex + 1;
-			m_MaxIndex = insertIndex;
-#endif
-	 
+			SetSafetyRange(insertIndex + 1);
+
 			// Count the newly-added node
-			count = insertIndex + 1;
-			
-			return new NativeLinkedListIterator(insertIndex, version);
+			state->Length = insertIndex + 1;
+
+			// Return an enumerator to the added node
+			return new Enumerator(this, insertIndex, state->Version);
 		}
 
 		/// <summary>
 		/// Add an node to the end of the list. If the list is full, it
 		/// will be automatically resized by allocating new unmanaged memory
 		/// with the greater of double the <see cref="Capacity"/> and the
-		/// current <see cref="Capacity"/> plus the <see cref="Count"/> of the
-		/// list and copying over all existing nodes. Any existing iterators
+		/// current <see cref="Capacity"/> plus the <see cref="Length"/> of the
+		/// list and copying over all existing nodes. Any existing enumerators
 		/// will _not_ be invalidated.
 		///
-		/// This operation is O(1) when the list has enough capacity to add all
-		/// the nodes in the given list and O(N) when it doesn't.
+		/// This operation is O(N) plus the allocator's deallocation and
+		/// allocation complexity when the list doesn't have enough capacity to
+		/// add all the nodes.
 		/// </summary>
 		/// 
 		/// <param name="list">
@@ -559,76 +819,80 @@ namespace NativeCollections
 		/// </param>
 		///
 		/// <returns>
-		/// An iterator to the first added node or the tail if the given list is
-		/// empty and this list isn't or an invalid iterator if both lists are
-		/// empty.
+		/// An enumerator to the first added node or the tail if the given list
+		/// is empty and this list isn't or an invalid enumerator if both lists
+		/// are empty.
 		/// </returns>
 		[WriteAccessRequired]
-		public NativeLinkedListIterator PushBack(NativeLinkedList<T> list)
+		public Enumerator PushBack(NativeLinkedList<T> list)
 		{
+			RequireValidState();
 			RequireReadAccess();
 			RequireWriteAccess();
 
 			// There's nothing to add when given an empty list.
-			// Return an iterator to the tail or an invalid iterator if this
+			// Return an enumerator to the tail or an invalid enumerator if this
 			// list is also empty.
-			if (list.count == 0)
+			if (list.state->Length == 0)
 			{
-				return new NativeLinkedListIterator(tailIndex, version);
+				return new Enumerator(this, state->TailIndex, state->Version);
 			}
 
 			// The list is full. Resize.
-			if (count + list.count > capacity)
+			if (state->Length + list.state->Length > state->Capacity)
 			{
 				// We need enough capacity to store the whole list and want to
 				// at least double our capacity.
-				IncreaseCapacity(Math.Max(count * 2, count + list.count));
+				IncreaseCapacity(
+					Math.Max(
+						state->Length * 2,
+						state->Length + list.state->Length));
 			}
 
 			// Insert the list at the end
-			int endIndex = count;
-			int insertedHeadIndex;
-			int insertedTailIndex;
-			InsertAtEnd(list, out insertedHeadIndex, out insertedTailIndex);
+			int endIndex = state->Length;
+			int copiedHeadIndex;
+			int copiedTailIndex;
+			CopyToEnd(list, out copiedHeadIndex, out copiedTailIndex);
 
 			// The list was empty, so use the pushed list's head and tail
-			if (headIndex < 0)
+			if (state->HeadIndex < 0)
 			{
-				headIndex = list.headIndex;
-				tailIndex = list.tailIndex;
+				state->HeadIndex = list.state->HeadIndex;
+				state->TailIndex = list.state->TailIndex;
 			}
 			// The list wasn't empty, so point the tail at the head of the
 			// pushed list and the head of the pushed list at the tail
 			else
 			{
-				nextIndexes[tailIndex] = insertedHeadIndex;
-				prevIndexes[insertedHeadIndex] = tailIndex;
+				RequireIndexInBounds(state->TailIndex);
+				state->NextIndexes[state->TailIndex] = copiedHeadIndex;
+				RequireIndexInBounds(copiedHeadIndex);
+				state->PrevIndexes[copiedHeadIndex] = state->TailIndex;
 			}
 
 			// The added list's tail is now the tail
-			tailIndex = insertedTailIndex;
+			state->TailIndex = copiedTailIndex;
 
 			// Update safety ranges
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-			m_Length = endIndex + list.count;
-			m_MaxIndex = endIndex + list.count - 1;
-#endif
+			SetSafetyRange(endIndex + list.state->Length);
 
 			// Count the newly-added list's nodes
-			count = endIndex + list.count;
+			state->Length = endIndex + list.state->Length;
 
-			// Return an iterator to where we inserted the list's head node
-			return new NativeLinkedListIterator(insertedHeadIndex, version);
+			// Return an enumerator to where we inserted the list's head node
+			return new Enumerator(this, copiedHeadIndex, state->Version);
 		}
-		
+
 		/// <summary>
 		/// Add an node to the beginning of the list. If the list is full, it
 		/// will be automatically resized by allocating new unmanaged memory
 		/// with double the <see cref="Capacity"/> and copying over all existing
-		/// nodes. Any existing iterators will _not_ be invalidated.
+		/// nodes. Any existing enumerators will _not_ be invalidated.
 		///
-		/// This operation is O(1) when the list isn't full (i.e.
-		/// <see cref="Count"/> == <see cref="Capacity"/>) and O(N) when it is.
+		/// This operation is O(1) when the list has enough capacity to hold the
+		/// added node or O(N) plus the allocator's deallocation and
+		/// allocation complexity when it doesn't.
 		/// </summary>
 		/// 
 		/// <param name="value">
@@ -636,65 +900,67 @@ namespace NativeCollections
 		/// </param>
 		///
 		/// <returns>
-		/// An iterator to the added node
+		/// An enumerator to the added node
 		/// </returns>
 		[WriteAccessRequired]
-		public NativeLinkedListIterator PushFront(T value)
+		public Enumerator PushFront(T value)
 		{
+			RequireValidState();
 			RequireReadAccess();
 			RequireWriteAccess();
 
 			// The list is full. Resize.
-			if (count == capacity)
+			if (state->Length == state->Capacity)
 			{
-				IncreaseCapacity(count * 2);
+				IncreaseCapacity(state->Length * 2);
 			}
-	 
+
 			// Insert at the end
-			int insertIndex = count;
-			datas[insertIndex] = value;
-			nextIndexes[insertIndex] = headIndex;
-			prevIndexes[insertIndex] = -1;
-			
+			int insertIndex = state->Length;
+			RequireIndexInBounds(insertIndex);
+			UnsafeUtility.WriteArrayElement(state->Datas, insertIndex, value);
+			state->NextIndexes[insertIndex] = state->HeadIndex;
+			state->PrevIndexes[insertIndex] = -1;
+
 			// The list was empty, so this is the head and the tail now
-			if (headIndex < 0)
+			if (state->HeadIndex < 0)
 			{
-				headIndex = insertIndex;
-				tailIndex = insertIndex;
+				state->HeadIndex = insertIndex;
+				state->TailIndex = insertIndex;
 			}
 			// The list wasn't empty, so point the head at the added node and
 			// point the added node at the head
 			else
 			{
-				prevIndexes[headIndex] = insertIndex;
-				nextIndexes[insertIndex] = headIndex;
+				RequireIndexInBounds(state->HeadIndex);
+				state->PrevIndexes[state->HeadIndex] = insertIndex;
+				RequireIndexInBounds(insertIndex);
+				state->NextIndexes[insertIndex] = state->HeadIndex;
 			}
-			
+
 			// The added node is now the head
-			headIndex = insertIndex;
-			
+			state->HeadIndex = insertIndex;
+
 			// Update safety ranges
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-			m_Length = insertIndex + 1;
-			m_MaxIndex = insertIndex;
-#endif
-	 
+			SetSafetyRange(insertIndex + 1);
+
 			// Count the newly-added node
-			count = insertIndex + 1;
-			
-			return new NativeLinkedListIterator(insertIndex, version);
+			state->Length = insertIndex + 1;
+
+			return new Enumerator(this, insertIndex, state->Version);
 		}
 
 		/// <summary>
 		/// Add an node to the beginning of the list. If the list is full, it
 		/// will be automatically resized by allocating new unmanaged memory
 		/// with the greater of double the <see cref="Capacity"/> and the
-		/// current <see cref="Capacity"/> plus the <see cref="Count"/> of the
-		/// list and copying over all existing nodes. Any existing iterators
+		/// current <see cref="Capacity"/> plus the <see cref="Length"/> of the
+		/// list and copying over all existing nodes. Any existing enumerators
 		/// will _not_ be invalidated.
 		///
-		/// This operation is O(1) when the list has enough capacity to add all
-		/// the nodes in the given list and O(N) when it doesn't.
+		/// This operation is O(N) plus the allocator's deallocation and
+		/// allocation complexity when the list doesn't have enough capacity to
+		/// add all the nodes.
 		/// </summary>
 		/// 
 		/// <param name="list">
@@ -702,78 +968,83 @@ namespace NativeCollections
 		/// </param>
 		///
 		/// <returns>
-		/// An iterator to the last added node or the head if the given list is
-		/// empty and this list isn't or an invalid iterator if both lists are
-		/// empty.
+		/// An enumerator to the last added node or the head if the given list
+		/// is empty and this list isn't or an invalid enumerator if both lists
+		/// are empty.
 		/// </returns>
 		[WriteAccessRequired]
-		public NativeLinkedListIterator PushFront(NativeLinkedList<T> list)
+		public Enumerator PushFront(NativeLinkedList<T> list)
 		{
+			RequireValidState();
 			RequireReadAccess();
 			RequireWriteAccess();
 
 			// There's nothing to add when given an empty list.
-			// Return an iterator to the head or an invalid iterator if this
+			// Return an enumerator to the head or an invalid enumerator if this
 			// list is also empty.
-			if (list.count == 0)
+			if (list.state->Length == 0)
 			{
-				return new NativeLinkedListIterator(headIndex, version);
+				return new Enumerator(this, state->HeadIndex, state->Version);
 			}
 
 			// The list is full. Resize.
-			if (count + list.count > capacity)
+			if (state->Length + list.state->Length > state->Capacity)
 			{
 				// We need enough capacity to store the whole list and want to
 				// at least double our capacity.
-				IncreaseCapacity(Math.Max(count * 2, count + list.count));
+				IncreaseCapacity(
+					Math.Max(
+						state->Length * 2,
+						state->Length + list.state->Length));
 			}
 
 			// Insert the list at the end
-			int endIndex = count;
-			int insertedHeadIndex;
-			int insertedTailIndex;
-			InsertAtEnd(list, out insertedHeadIndex, out insertedTailIndex);
+			int endIndex = state->Length;
+			int copiedHeadIndex;
+			int copiedTailIndex;
+			CopyToEnd(list, out copiedHeadIndex, out copiedTailIndex);
 
 			// The list was empty, so use the pushed list's head and tail
-			if (headIndex < 0)
+			if (state->HeadIndex < 0)
 			{
-				headIndex = list.headIndex;
-				tailIndex = list.tailIndex;
+				state->HeadIndex = list.state->HeadIndex;
+				state->TailIndex = list.state->TailIndex;
 			}
 			// The list wasn't empty, so point the head at the tail of the
 			// pushed list and the tail of the pushed list at the head
 			else
 			{
-				prevIndexes[headIndex] = insertedTailIndex;
-				nextIndexes[insertedTailIndex] = headIndex;
+				RequireIndexInBounds(state->HeadIndex);
+				state->PrevIndexes[state->HeadIndex] = copiedTailIndex;
+				RequireIndexInBounds(copiedTailIndex);
+				state->NextIndexes[copiedTailIndex] = state->HeadIndex;
 			}
 
 			// The added list's head is now the head
-			headIndex = insertedHeadIndex;
+			state->HeadIndex = copiedHeadIndex;
 
 			// Update safety ranges
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-			m_Length = endIndex + list.count;
-			m_MaxIndex = endIndex + list.count - 1;
-#endif
+			SetSafetyRange(endIndex + list.state->Length);
 
 			// Count the newly-added list's nodes
-			count = endIndex + list.count;
+			state->Length = endIndex + list.state->Length;
 
-			// Return an iterator to where we inserted the list's tail node
-			return new NativeLinkedListIterator(insertedTailIndex, version);
+			// Return an enumerator to where we inserted the list's tail node
+			return new Enumerator(this, copiedTailIndex, state->Version);
 		}
 
 		/// <summary>
-		/// Insert a node after the node referred to by the given iterator. This
-		/// doesn't invalidate any iterators.
+		/// Insert a node after the node referred to by the given enumerator.
+		/// This doesn't invalidate any enumerators.
 		/// 
-		/// This operation is O(1).
+		/// This operation is O(1) when the list has enough capacity to hold the
+		/// inserted node or O(N) plus the allocator's deallocation and
+		/// allocation complexity when it doesn't.
 		/// </summary>
 		/// 
-		/// <param name="it">
-		/// Iterator to the node to insert after. If invalid, this function has
-		/// no effect.
+		/// <param name="enumerator">
+		/// Enumerator to the node to insert after. If invalid, this function
+		/// has no effect.
 		/// </param>
 		/// 
 		/// <param name="value">
@@ -781,27 +1052,26 @@ namespace NativeCollections
 		/// </param>
 		/// 
 		/// <returns>
-		/// An iterator to the inserted node or an invalid iterator if the given
-		/// iterator is invalid.
+		/// An enumerator to the inserted node or an invalid enumerator if the
+		/// given enumerator is invalid.
 		/// </returns>
 		[WriteAccessRequired]
-		public NativeLinkedListIterator InsertAfter(
-			NativeLinkedListIterator it,
-			T value)
+		public Enumerator InsertAfter(Enumerator enumerator, T value)
 		{
+			RequireValidState();
 			RequireReadAccess();
 			RequireWriteAccess();
 
-			// Can't insert after an invalid iterator
-			if (!IsValid(it))
+			// Can't insert after an invalid enumerator
+			if (!enumerator.IsValid)
 			{
-				return NativeLinkedListIterator.MakeInvalid();
+				return Enumerator.MakeInvalid();
 			}
 
 			// The list is full. Resize.
-			if (count == capacity)
+			if (state->Length == state->Capacity)
 			{
-				IncreaseCapacity(count * 2);
+				IncreaseCapacity(state->Length * 2);
 			}
 
 			// By adding C after B, we're changing from this:
@@ -819,55 +1089,57 @@ namespace NativeCollections
 			//   "end node": node just after the end of the nodes array (D + 1)
 
 			// Set the data to insert at the end node
-			int endIndex = count;
-			datas[endIndex] = value;
+			int endIndex = state->Length;
+			RequireIndexInBounds(endIndex);
+			UnsafeUtility.WriteArrayElement(state->Datas, endIndex, value);
 
 			// Point the end node's next to the next node
-			int insertNextIndex = nextIndexes[it.Index];
-			nextIndexes[endIndex] = insertNextIndex;
+			RequireIndexInBounds(enumerator.Index);
+			int insertNextIndex = state->NextIndexes[enumerator.Index];
+			state->NextIndexes[endIndex] = insertNextIndex;
 
 			// Point the end node's previous to the insert node
-			int insertPrevIndex = prevIndexes[it.Index];
-			prevIndexes[endIndex] = it.Index;
+			int insertPrevIndex = state->PrevIndexes[enumerator.Index];
+			state->PrevIndexes[endIndex] = enumerator.Index;
 
 			// Point the insert node's next to the end node
-			nextIndexes[it.Index] = endIndex;
+			state->NextIndexes[enumerator.Index] = endIndex;
 
 			// Point the next node's prev to the end node
 			if (insertNextIndex >= 0)
 			{
-				prevIndexes[insertNextIndex] = endIndex;
+				RequireIndexInBounds(insertNextIndex);
+				state->PrevIndexes[insertNextIndex] = endIndex;
 			}
 			// The insert node was the tail, so update the tail index to
 			// point to the end node where we moved it
 			else
 			{
-				tailIndex = endIndex;
+				state->TailIndex = endIndex;
 			}
 
 			// Update safety ranges
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-			m_Length = endIndex + 1;
-			m_MaxIndex = endIndex;
-#endif
+			SetSafetyRange(endIndex + 1);
 
 			// Count the newly-added node
-			count = endIndex + 1;
+			state->Length = endIndex + 1;
 
 			// The inserted node 
-			return new NativeLinkedListIterator(endIndex, version);
+			return new Enumerator(this, endIndex, state->Version);
 		}
 
 		/// <summary>
 		/// Insert the nodes of a given list after the node referred to by the
-		/// given iterator. This doesn't invalidate any iterators.
+		/// given enumerator. This doesn't invalidate any enumerators.
 		/// 
-		/// This operation is O(1).
+		/// This operation is O(N) plus the allocator's deallocation and
+		/// allocation complexity when the list doesn't have enough capacity to
+		/// add all the nodes.
 		/// </summary>
 		/// 
-		/// <param name="it">
-		/// Iterator to the node to insert after. If invalid, this function has
-		/// no effect.
+		/// <param name="enumerator">
+		/// Enumerator to the node to insert after. If invalid, this function
+		/// has no effect.
 		/// </param>
 		/// 
 		/// <param name="list">
@@ -875,92 +1147,99 @@ namespace NativeCollections
 		/// </param>
 		/// 
 		/// <returns>
-		/// An iterator to the inserted head node or the given iterator if the
-		/// given list is empty or an invalid iterator if the given iterator is
-		/// invalid.
+		/// An enumerator to the inserted head node or the given enumerator if
+		/// the given list is empty or an invalid enumerator if the given
+		/// enumerator is invalid.
 		/// </returns>
 		[WriteAccessRequired]
-		public NativeLinkedListIterator InsertAfter(
-			NativeLinkedListIterator it,
+		public Enumerator InsertAfter(
+			Enumerator enumerator,
 			NativeLinkedList<T> list)
 		{
+			RequireValidState();
 			RequireReadAccess();
 			RequireWriteAccess();
 
-			// Can't insert after an invalid iterator
-			if (!IsValid(it))
+			// Can't insert after an invalid enumerator
+			if (!enumerator.IsValid)
 			{
-				return NativeLinkedListIterator.MakeInvalid();
+				return Enumerator.MakeInvalid();
 			}
 
 			// There's nothing to add when given an empty list.
-			// Return an iterator to the head or an invalid iterator if this
+			// Return an enumerator to the head or an invalid enumerator if this
 			// list is also empty.
-			if (list.count == 0)
+			if (list.state->Length == 0)
 			{
-				return new NativeLinkedListIterator(headIndex, version);
+				return new Enumerator(this, state->HeadIndex, state->Version);
 			}
 
 			// The list is full. Resize.
-			if (count + list.count > capacity)
+			if (state->Length + list.state->Length > state->Capacity)
 			{
 				// We need enough capacity to store the whole list and want to
 				// at least double our capacity.
-				IncreaseCapacity(Math.Max(count * 2, count + list.count));
+				IncreaseCapacity(
+					Math.Max(
+						state->Length * 2,
+						state->Length + list.state->Length));
 			}
 
 			// Insert the list at the end
-			int endIndex = count;
-			int insertedHeadIndex;
-			int insertedTailIndex;
-			InsertAtEnd(list, out insertedHeadIndex, out insertedTailIndex);
+			int endIndex = state->Length;
+			int copiedHeadIndex;
+			int copiedTailIndex;
+			CopyToEnd(list, out copiedHeadIndex, out copiedTailIndex);
 
 			// Point the inserted tail node's next to the next node
-			int insertNextIndex = nextIndexes[it.Index];
-			nextIndexes[insertedTailIndex] = insertNextIndex;
+			RequireIndexInBounds(enumerator.Index);
+			RequireIndexInBounds(copiedTailIndex);
+			int insertNextIndex = state->NextIndexes[enumerator.Index];
+			state->NextIndexes[copiedTailIndex] = insertNextIndex;
 
 			// Point the inserted head node's previous to the insert node
-			int insertPrevIndex = prevIndexes[it.Index];
-			prevIndexes[insertedHeadIndex] = it.Index;
+			int insertPrevIndex = state->PrevIndexes[enumerator.Index];
+			RequireIndexInBounds(copiedHeadIndex);
+			state->PrevIndexes[copiedHeadIndex] = enumerator.Index;
 
 			// Point the insert node's next to the inserted head node
-			nextIndexes[it.Index] = insertedHeadIndex;
+			state->NextIndexes[enumerator.Index] = copiedHeadIndex;
 
 			// Point the next node's prev to the inserted tail node
 			if (insertNextIndex >= 0)
 			{
-				prevIndexes[insertNextIndex] = insertedTailIndex;
+				RequireIndexInBounds(insertNextIndex);
+				state->PrevIndexes[insertNextIndex] = copiedTailIndex;
 			}
 			// The insert node was the tail, so update the tail index to
 			// point to the inserted tail node where we moved it
 			else
 			{
-				tailIndex = insertedTailIndex;
+				state->TailIndex = copiedTailIndex;
 			}
 
 			// Update safety ranges
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-			m_Length = endIndex + list.count;
-			m_MaxIndex = endIndex + list.count;
-#endif
+			SetSafetyRange(endIndex + list.state->Length);
 
 			// Count the newly-added nodes
-			count = endIndex + list.count;
+			state->Length = endIndex + list.state->Length;
 
 			// The first inserted node 
-			return new NativeLinkedListIterator(insertedHeadIndex, version);
+			return new Enumerator(this, copiedHeadIndex, state->Version);
 		}
 
 		/// <summary>
-		/// Insert a node before the node referred to by the given iterator.
-		/// This doesn't invalidate any iterators.
+		/// Insert a node before the node referred to by the given enumerator.
+		/// This doesn't invalidate any enumerators.
 		/// 
-		/// This operation is O(1).
+		/// This operation is O(1) when the list has enough capacity to hold the
+		/// inserted node or O(N) plus the allocator's deallocation and
+		/// allocation complexity when it doesn't.
 		/// </summary>
 		/// 
-		/// <param name="it">
-		/// Iterator to the node to insert before. If invalid, this function has
-		/// no effect.
+		/// <param name="enumerator">
+		/// Enumerator to the node to insert before. If invalid, this function
+		/// has no effect.
 		/// </param>
 		/// 
 		/// <param name="value">
@@ -968,27 +1247,26 @@ namespace NativeCollections
 		/// </param>
 		/// 
 		/// <returns>
-		/// An iterator to the inserted node or an invalid iterator if the given
-		/// iterator is invalid.
+		/// An enumerator to the inserted node or an invalid enumerator if the
+		/// given enumerator is invalid.
 		/// </returns>
 		[WriteAccessRequired]
-		public NativeLinkedListIterator InsertBefore(
-			NativeLinkedListIterator it,
-			T value)
+		public Enumerator InsertBefore(Enumerator enumerator, T value)
 		{
+			RequireValidState();
 			RequireReadAccess();
 			RequireWriteAccess();
 
-			// Can't insert before an invalid iterator
-			if (!IsValid(it))
+			// Can't insert before an invalid enumerator
+			if (!enumerator.IsValid)
 			{
-				return NativeLinkedListIterator.MakeInvalid();
+				return Enumerator.MakeInvalid();
 			}
 
 			// The list is full. Resize.
-			if (count == capacity)
+			if (state->Length == state->Capacity)
 			{
-				IncreaseCapacity(count * 2);
+				IncreaseCapacity(state->Length * 2);
 			}
 
 			// By adding B before C, we're changing from this:
@@ -1006,55 +1284,57 @@ namespace NativeCollections
 			//   "end node": node just after the end of the nodes array (D + 1)
 
 			// Set the data to insert at the end node
-			int endIndex = count;
-			datas[endIndex] = value;
+			int endIndex = state->Length;
+			RequireIndexInBounds(endIndex);
+			UnsafeUtility.WriteArrayElement(state->Datas, endIndex, value);
 
 			// Point the end node's next to the insert node
-			int insertNextIndex = nextIndexes[it.Index];
-			nextIndexes[endIndex] = it.Index;
+			RequireIndexInBounds(enumerator.Index);
+			int insertNextIndex = state->NextIndexes[enumerator.Index];
+			state->NextIndexes[endIndex] = enumerator.Index;
 
 			// Point the end node's previous to the prev node
-			int insertPrevIndex = prevIndexes[it.Index];
-			prevIndexes[endIndex] = insertPrevIndex;
+			int insertPrevIndex = state->PrevIndexes[enumerator.Index];
+			state->PrevIndexes[endIndex] = insertPrevIndex;
 
 			// Point the insert node's prev to the end node
-			prevIndexes[it.Index] = endIndex;
+			state->PrevIndexes[enumerator.Index] = endIndex;
 
 			// Point the prev node's next to the end node
 			if (insertPrevIndex >= 0)
 			{
-				nextIndexes[insertPrevIndex] = endIndex;
+				RequireIndexInBounds(insertPrevIndex);
+				state->NextIndexes[insertPrevIndex] = endIndex;
 			}
 			// The insert node was the head, so update the head index to
 			// point to the end node where we moved it
 			else
 			{
-				headIndex = endIndex;
+				state->HeadIndex = endIndex;
 			}
 
 			// Update safety ranges
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-			m_Length = endIndex + 1;
-			m_MaxIndex = endIndex;
-#endif
+			SetSafetyRange(endIndex + 1);
 
 			// Count the newly-added node
-			count = endIndex + 1;
+			state->Length = endIndex + 1;
 
 			// The inserted node 
-			return new NativeLinkedListIterator(endIndex, version);
+			return new Enumerator(this, endIndex, state->Version);
 		}
 
 		/// <summary>
 		/// Insert the nodes of a given list before the node referred to by the
-		/// given iterator. This doesn't invalidate any iterators.
+		/// given enumerator. This doesn't invalidate any enumerators.
 		/// 
-		/// This operation is O(1).
+		/// This operation is O(N) plus the allocator's deallocation and
+		/// allocation complexity when the list doesn't have enough capacity to
+		/// add all the nodes.
 		/// </summary>
 		/// 
-		/// <param name="it">
-		/// Iterator to the node to insert before. If invalid, this function has
-		/// no effect.
+		/// <param name="enumerator">
+		/// Enumerator to the node to insert before. If invalid, this function
+		/// has no effect.
 		/// </param>
 		/// 
 		/// <param name="list">
@@ -1062,156 +1342,162 @@ namespace NativeCollections
 		/// </param>
 		/// 
 		/// <returns>
-		/// An iterator to the inserted tail node or the given iterator if the
-		/// given list is empty or an invalid iterator if the given iterator is
-		/// invalid.
+		/// An enumerator to the inserted tail node or the given enumerator if
+		/// the given list is empty or an invalid enumerator if the given
+		/// enumerator is invalid.
 		/// </returns>
 		[WriteAccessRequired]
-		public NativeLinkedListIterator InsertBefore(
-			NativeLinkedListIterator it,
+		public Enumerator InsertBefore(
+			Enumerator enumerator,
 			NativeLinkedList<T> list)
 		{
+			RequireValidState();
 			RequireReadAccess();
 			RequireWriteAccess();
 
-			// Can't insert before an invalid iterator
-			if (!IsValid(it))
+			// Can't insert before an invalid enumerator
+			if (!enumerator.IsValid)
 			{
-				return NativeLinkedListIterator.MakeInvalid();
+				return Enumerator.MakeInvalid();
 			}
 
 			// There's nothing to add when given an empty list.
-			// Return an iterator to the head or an invalid iterator if this
+			// Return an enumerator to the head or an invalid enumerator if this
 			// list is also empty.
-			if (list.count == 0)
+			if (list.state->Length == 0)
 			{
-				return new NativeLinkedListIterator(headIndex, version);
+				return new Enumerator(this, state->HeadIndex, state->Version);
 			}
 
 			// The list is full. Resize.
-			if (count + list.count > capacity)
+			if (state->Length + list.state->Length > state->Capacity)
 			{
 				// We need enough capacity to store the whole list and want to
 				// at least double our capacity.
-				IncreaseCapacity(Math.Max(count * 2, count + list.count));
+				IncreaseCapacity(
+					Math.Max(
+						state->Length * 2,
+						state->Length + list.state->Length));
 			}
 
 			// Insert the list at the end
-			int endIndex = count;
-			int insertedHeadIndex;
-			int insertedTailIndex;
-			InsertAtEnd(list, out insertedHeadIndex, out insertedTailIndex);
+			int endIndex = state->Length;
+			int copiedHeadIndex;
+			int copiedTailIndex;
+			CopyToEnd(list, out copiedHeadIndex, out copiedTailIndex);
 
 			// Point the inserted tail node's next to the insert node
-			int insertNextIndex = nextIndexes[it.Index];
-			nextIndexes[insertedTailIndex] = it.Index;
+			RequireIndexInBounds(enumerator.Index);
+			int insertNextIndex = state->NextIndexes[enumerator.Index];
+			RequireIndexInBounds(copiedTailIndex);
+			state->NextIndexes[copiedTailIndex] = enumerator.Index;
 
 			// Point the inserted head node's previous to the prev node
-			int insertPrevIndex = prevIndexes[it.Index];
-			prevIndexes[insertedHeadIndex] = insertPrevIndex;
+			int insertPrevIndex = state->PrevIndexes[enumerator.Index];
+			RequireIndexInBounds(copiedHeadIndex);
+			state->PrevIndexes[copiedHeadIndex] = insertPrevIndex;
 
 			// Point the insert node's prev to the inserted tail node
-			prevIndexes[it.Index] = insertedTailIndex;
+			state->PrevIndexes[enumerator.Index] = copiedTailIndex;
 
 			// Point the prev node's next to the inserted head node
 			if (insertPrevIndex >= 0)
 			{
-				nextIndexes[insertPrevIndex] = insertedHeadIndex;
+				RequireIndexInBounds(insertPrevIndex);
+				state->NextIndexes[insertPrevIndex] = copiedHeadIndex;
 			}
 			// The insert node was the head, so update the head index to
 			// point to the inserted head node where we moved it
 			else
 			{
-				headIndex = insertedHeadIndex;
+				state->HeadIndex = copiedHeadIndex;
 			}
 
 			// Update safety ranges
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-			m_Length = endIndex + list.count;
-			m_MaxIndex = endIndex + list.count;
-#endif
+			SetSafetyRange(endIndex + list.state->Length);
 
 			// Count the newly-added nodes
-			count = endIndex + list.count;
+			state->Length = endIndex + list.state->Length;
 
 			// The inserted tail node 
-			return new NativeLinkedListIterator(insertedTailIndex, version);
+			return new Enumerator(this, copiedTailIndex, state->Version);
 		}
 
 		/// <summary>
-		/// Remove a node. This invalidates all iterators, including the given
-		/// iterator, if the given iterator is valid. Note that the node's value
-		/// is not cleared since it's blittable and therefore can't hold any
-		/// managed reference that could be garbage-collected.
+		/// Remove a node. This invalidates all enumerators, including the given
+		/// enumerator, if the given enumerator is valid. Note that the node's
+		/// value is not cleared since it's blittable and therefore can't hold
+		/// any managed reference that could be garbage-collected.
 		///
 		/// This operation is O(1).
 		/// </summary>
 		/// 
-		/// <param name="it">
-		/// Iterator to the node to remove. Is invalid, this function has no
+		/// <param name="enumerator">
+		/// Enumerator to the node to remove. Is invalid, this function has no
 		/// effect.
-		/// <see cref="IsValid"/>.
+		/// <see cref="Enumerator.IsValid"/>.
 		/// </param>
 		///
 		/// <returns>
-		/// An invalid iterator if this is the only node in the list or the
-		/// given iterator is invalid, the next node if this is the head of the
-		/// list, otherwise the previous node.
+		/// An invalid enumerator if this is the only node in the list or the
+		/// given enumerator is invalid, the next node if this is the head of
+		/// the list, otherwise the previous node.
 		/// </returns>
 		[WriteAccessRequired]
-		public NativeLinkedListIterator Remove(NativeLinkedListIterator it)
+		public Enumerator Remove(Enumerator enumerator)
 		{
+			RequireValidState();
 			RequireReadAccess();
 			RequireWriteAccess();
-			
-			// Can't remove invalid iterators
-			if (!IsValid(it))
+
+			// Can't remove invalid enumerators
+			if (!enumerator.IsValid)
 			{
-				return NativeLinkedListIterator.MakeInvalid();
+				return Enumerator.MakeInvalid();
 			}
-			
-			int newCount;
+
+			int newLength;
 			int retIndex;
-			
+
 			// Node to remove is the only node
-			if (count == 1)
+			if (state->Length == 1)
 			{
-				headIndex = -1;
-				tailIndex = -1;
-				newCount = 0;
+				state->HeadIndex = -1;
+				state->TailIndex = -1;
+				newLength = 0;
 				retIndex = -1;
 			}
 			// There are at least two nodes in the list
 			else
 			{
-				FailIfIndexOutOfCheckBounds(it.Index);
+				RequireIndexInBounds(enumerator.Index);
 
 				// Node to remove is the head
-				if (it.Index == headIndex)
+				if (enumerator.Index == state->HeadIndex)
 				{
 					// Move the head pointer forward one
-					int headNextIndex = nextIndexes[it.Index];
-					headIndex = headNextIndex;
-					
+					int headNextIndex = state->NextIndexes[enumerator.Index];
+					state->HeadIndex = headNextIndex;
+
 					// Make the new head's previous node be invalid
-					FailIfIndexOutOfCheckBounds(headNextIndex);
-					prevIndexes[headNextIndex] = -1;
-					
-					// Return an iterator to the new head
+					RequireIndexInBounds(headNextIndex);
+					state->PrevIndexes[headNextIndex] = -1;
+
+					// Return an enumerator to the new head
 					retIndex = headNextIndex;
 				}
 				// Node to remove is the tail
-				else if (it.Index == tailIndex)
+				else if (enumerator.Index == state->TailIndex)
 				{
 					// Move the tail pointer back one
-					int tailPrevIndex = prevIndexes[it.Index];
-					tailIndex = tailPrevIndex;
+					int tailPrevIndex = state->PrevIndexes[enumerator.Index];
+					state->TailIndex = tailPrevIndex;
 
 					// Make the new tail's next node be invalid
-					FailIfIndexOutOfCheckBounds(tailPrevIndex);
-					nextIndexes[tailPrevIndex] = -1;
-					
-					// Return an iterator to the new tail
+					RequireIndexInBounds(tailPrevIndex);
+					state->NextIndexes[tailPrevIndex] = -1;
+
+					// Return an enumerator to the new tail
 					retIndex = tailPrevIndex;
 				}
 				// Node to remove is an interior node.
@@ -1219,139 +1505,153 @@ namespace NativeCollections
 				{
 					// Link the previous node to the next node and the next node
 					// to the previous node
-					int prevIndex = prevIndexes[it.Index];
-					int nextIndex = nextIndexes[it.Index];
-					FailIfIndexOutOfCheckBounds(prevIndex);
-					FailIfIndexOutOfCheckBounds(nextIndex);
-					nextIndexes[prevIndex] = nextIndex;
-					prevIndexes[nextIndex] = prevIndex;
-					
-					// Return an iterator to the previous node
+					int prevIndex = state->PrevIndexes[enumerator.Index];
+					int nextIndex = state->NextIndexes[enumerator.Index];
+					RequireIndexInBounds(prevIndex);
+					state->NextIndexes[prevIndex] = nextIndex;
+					RequireIndexInBounds(nextIndex);
+					state->PrevIndexes[nextIndex] = prevIndex;
+
+					// Return an enumerator to the previous node
 					retIndex = prevIndex;
 				}
-				
+
 				// Move the last node to where the node was removed from
-				int lastIndex = count - 1;
-				if (it.Index != lastIndex)
+				int lastIndex = state->Length - 1;
+				if (enumerator.Index != lastIndex)
 				{
 					// Copy the last node to where the removed node was
-					FailIfIndexOutOfCheckBounds(lastIndex);
-					int lastNextIndex = nextIndexes[lastIndex];
-					int lastPrevIndex = prevIndexes[lastIndex];
-					datas[it.Index] = datas[lastIndex];
-					nextIndexes[it.Index] = lastNextIndex;
-					prevIndexes[it.Index] = lastPrevIndex;
-					
+					RequireIndexInBounds(lastIndex);
+					int lastNextIndex = state->NextIndexes[lastIndex];
+					int lastPrevIndex = state->PrevIndexes[lastIndex];
+					UnsafeUtility.WriteArrayElement(
+						state->Datas,
+						enumerator.Index,
+						UnsafeUtility.ReadArrayElement<T>(
+							state->Datas,
+							lastIndex));
+					state->NextIndexes[enumerator.Index] = lastNextIndex;
+					state->PrevIndexes[enumerator.Index] = lastPrevIndex;
+
 					// If the last node wasn't the tail, set its next node's
 					// previous index to where the last node was moved to
 					if (lastNextIndex >= 0)
 					{
-						FailIfIndexOutOfCheckBounds(lastNextIndex);
-						prevIndexes[lastNextIndex] = it.Index;
+						RequireIndexInBounds(lastNextIndex);
+						state->PrevIndexes[lastNextIndex] = enumerator.Index;
 					}
-					
+
 					// If the last node wasn't the head, set its previous node's
 					// next index to where the last node was moved to
 					if (lastPrevIndex >= 0)
 					{
-						FailIfIndexOutOfCheckBounds(lastPrevIndex);
-						nextIndexes[lastPrevIndex] = it.Index;
+						RequireIndexInBounds(lastPrevIndex);
+						state->NextIndexes[lastPrevIndex] = enumerator.Index;
 					}
 
 					// If the last node was the head, update the head index
-					if (lastIndex == headIndex)
+					if (lastIndex == state->HeadIndex)
 					{
-						headIndex = it.Index;
+						state->HeadIndex = enumerator.Index;
 					}
-					
+
 					// If the last node was the tail, update the tail index
-					if (lastIndex == tailIndex)
+					if (lastIndex == state->TailIndex)
 					{
-						tailIndex = it.Index;
+						state->TailIndex = enumerator.Index;
 					}
-					
+
 					// If the last node was the return, update the return
 					if (lastIndex == retIndex)
 					{
-						retIndex = it.Index;
+						retIndex = enumerator.Index;
 					}
 				}
 
 				// Account for the removed node
-				newCount = lastIndex;
+				newLength = lastIndex;
 			}
 
-			// Set the new count
-			count = newCount;
+			// Set the new length
+			state->Length = newLength;
 
 			// Update safety ranges
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-			m_Length = newCount;
-			m_MaxIndex = newCount - 1;
-#endif
+			SetSafetyRange(newLength);
 
-			// Invalidate all iterators
-			version++;
-			
-			// Return the appropriate iterator
-			return new NativeLinkedListIterator(retIndex, version);
+			// Invalidate all enumerators
+			state->Version++;
+
+			// Return the appropriate enumerator
+			return new Enumerator(this, retIndex, state->Version);
 		}
 
 		/// <summary>
 		/// Reorder the list such that its order is preserved but the nodes are
 		/// laid out sequentially in memory. This allows for indexing into the
 		/// list after a call to <see cref="Remove"/>. This invalidates all
-		/// iterators.
+		/// enumerators.
 		///
 		/// This operation is O(N).
 		/// </summary>
 		[WriteAccessRequired]
 		public void SortNodeMemoryAddresses()
 		{
+			RequireValidState();
 			RequireReadAccess();
 			RequireWriteAccess();
+			RequireFullListSafetyCheckBounds();
 
 			// Swap the data for the head with the data for the first element,
-			// then the the node after the head that to the second element, until
-			// the tail is reached
-			for (int curIndex = headIndex, startIndex = 0;
-			     curIndex >= 0;
-			     curIndex = nextIndexes[curIndex], startIndex++)
+			// then the the node after the head that to the second element,
+			// until the tail is reached
+			for (int curIndex = state->HeadIndex, startIndex = 0;
+				 curIndex >= 0;
+				 curIndex = state->NextIndexes[curIndex], startIndex++)
 			{
 				// Never swap backwards. The part of the array up to startIndex
 				// is already in order.
 				if (curIndex > startIndex)
 				{
-					T startData = datas[startIndex];
-					datas[startIndex] = datas[curIndex];
-					datas[curIndex] = startData;
+					T startData = UnsafeUtility.ReadArrayElement<T>(
+						state->Datas,
+						startIndex);
+					UnsafeUtility.WriteArrayElement(
+						state->Datas,
+						startIndex,
+						UnsafeUtility.ReadArrayElement<T>(
+							state->Datas,
+							curIndex));
+					UnsafeUtility.WriteArrayElement(
+						state->Datas,
+						curIndex,
+						startData);
 				}
 			}
 
-			int endIndex = count - 1;
+			int endIndex = state->Length - 1;
 
 			// Set all the next pointers to point to the next index now that
 			// the datas are sequential. The last one points to null.
 			for (int i = 0; i <= endIndex; ++i)
 			{
-				nextIndexes[i] = i + 1;
+				state->NextIndexes[i] = i + 1;
 			}
-			nextIndexes[endIndex] = -1;
+			state->NextIndexes[endIndex] = -1;
 
 			// Set all the prev pointers to point to the prev index now that
 			// the datas are sequential
 			for (int i = 0; i <= endIndex; ++i)
 			{
-				prevIndexes[i] = i - 1;
+				state->PrevIndexes[i] = i - 1;
 			}
 
 
 			// The head is now at the beginning and the tail is now at the end
-			headIndex = 0;
-			tailIndex = endIndex;
+			state->HeadIndex = 0;
+			state->TailIndex = endIndex;
 
-			// Invalidate all iterators
-			version++;
+			// Invalidate all enumerators
+			state->Version++;
 		}
 
 		/// <summary>
@@ -1361,35 +1661,39 @@ namespace NativeCollections
 		/// </summary>
 		///
 		/// <param name="array">
-		/// Array to copy nodes to. If null or less than <see cref="Count"/>,
+		/// Array to copy nodes to. If null or less than <see cref="Length"/>,
 		/// a new array will be allocated.
 		/// </param>
 		/// 
 		/// <returns>
 		/// A managed array with all of the list's nodes. This is either the
 		/// given array if it was non-null and at least as long as
-		/// <see cref="Count"/> or a newly-allocated array with length equal to
-		/// <see cref="Count"/> otherwise.
+		/// <see cref="Length"/> or a newly-allocated array with length equal to
+		/// <see cref="Length"/> otherwise.
 		/// </returns>
 		public T[] ToArray(T[] array = null)
 		{
+			RequireValidState();
 			RequireReadAccess();
+			RequireFullListSafetyCheckBounds();
 
 			// If the given array is null or can't hold all the nodes, allocate
 			// a new one
-			if (array == null || array.Length < count)
+			if (array == null || array.Length < state->Length)
 			{
-				array = new T[count];
+				array = new T[state->Length];
 			}
-			
+
 			// Copy all nodes to the array
-			for (int i = headIndex, arrIndex = 0;
+			for (int i = state->HeadIndex, arrIndex = 0;
 				i >= 0;
-				i = nextIndexes[i], arrIndex++)
+				i = state->NextIndexes[i], arrIndex++)
 			{
-				array[arrIndex] = datas[i];
+				array[arrIndex] = UnsafeUtility.ReadArrayElement<T>(
+					state->Datas,
+					i);
 			}
-			
+
 			return array;
 		}
 
@@ -1401,33 +1705,37 @@ namespace NativeCollections
 		/// </summary>
 		///
 		/// <param name="array">
-		/// Array to copy nodes to. If null or less than <see cref="Count"/>,
+		/// Array to copy nodes to. If null or less than <see cref="Length"/>,
 		/// a new array will be allocated.
 		/// </param>
 		/// 
 		/// <returns>
 		/// A managed array with all of the list's nodes. This is either the
 		/// given array if it was non-null and at least as long as
-		/// <see cref="Count"/> or a newly-allocated array with length equal to
-		/// <see cref="Count"/> otherwise.
+		/// <see cref="Length"/> or a newly-allocated array with length equal to
+		/// <see cref="Length"/> otherwise.
 		/// </returns>
 		public T[] ToArrayReverse(T[] array = null)
 		{
+			RequireValidState();
 			RequireReadAccess();
+			RequireFullListSafetyCheckBounds();
 
 			// If the given array is null or can't hold all the nodes, allocate
 			// a new one
-			if (array == null || array.Length < count)
+			if (array == null || array.Length < state->Length)
 			{
-				array = new T[count];
+				array = new T[state->Length];
 			}
 
 			// Copy all nodes to the array
-			for (int i = tailIndex, arrIndex = 0;
+			for (int i = state->TailIndex, arrIndex = 0;
 				i >= 0;
-				i = prevIndexes[i], arrIndex++)
+				i = state->PrevIndexes[i], arrIndex++)
 			{
-				array[arrIndex] = datas[i];
+				array[arrIndex] = UnsafeUtility.ReadArrayElement<T>(
+					state->Datas,
+					i);
 			}
 
 			return array;
@@ -1443,50 +1751,45 @@ namespace NativeCollections
 		/// Array to copy nodes to
 		/// </param>
 		/// 
-		/// <param name="srcIndex">
-		/// Index to start copying from
+		/// <param name="srcEnumerator">
+		/// Enumerator to the first node to copy. This function has no effect
+		/// if this is invalid. By default, the head node is used.
 		/// </param>
 		/// 
 		/// <param name="destIndex">
-		/// Index to start copying into
+		/// Index to start copying into. By default, the first element is used.
 		/// </param>
 		/// 
 		/// <param name="length">
-		/// Number of nodes to copy
+		/// Number of nodes to copy. By default, the entire list is used.
 		/// </param>
 		public void CopyToNativeArray(
 			NativeArray<T> array,
-			int srcIndex = 0,
+			Enumerator srcEnumerator = default(Enumerator),
 			int destIndex = 0,
 			int length = -1)
 		{
+			RequireValidState();
 			RequireReadAccess();
 
-			// Go to the start of the source
-			int i = headIndex;
-			while (srcIndex > 0)
-			{
-				FailIfIndexOutOfCheckBounds(i);
-				i = nextIndexes[i];
-				srcIndex--;
-			}
-
-			// Copy all nodes to the array
+			// Copy the nodes' datas to the array
 			while (length > 0)
 			{
-				// Copy the node
-				array[destIndex] = datas[i];
+				// Copy the node's data
+				RequireIndexInBounds(srcEnumerator.Index);
+				array[destIndex] = UnsafeUtility.ReadArrayElement<T>(
+					state->Datas,
+					srcEnumerator.Index);
 
 				// Go to the next node
-				FailIfIndexOutOfCheckBounds(i);
-				i = nextIndexes[i];
+				srcEnumerator.MoveNext();
 
 				// Count the copy
 				destIndex++;
 				length--;
 			}
 		}
-	 
+
 		/// <summary>
 		/// Check if the underlying unmanaged memory has been created. This is
 		/// initially true then false after <see cref="Dispose"/> is called.
@@ -1497,61 +1800,109 @@ namespace NativeCollections
 		{
 			get
 			{
-				return datas.IsCreated;
+				return state != null;
 			}
 		}
-	 
+
 		/// <summary>
 		/// Release the list's unmanaged memory. Do not use it after this.
 		///
-		/// This operation is O(1).
+		/// This complexity of this operation is O(1) plus the allocator's
+		/// deallocation complexity.
 		/// </summary>
+		[WriteAccessRequired]
 		public void Dispose()
 		{
-	#if ENABLE_UNITY_COLLECTIONS_CHECKS
-			DisposeSentinel.Dispose(m_Safety, ref m_DisposeSentinel);
-	#endif
-			datas.Dispose();
-			nextIndexes.Dispose();
-			prevIndexes.Dispose();
+			RequireWriteAccess();
 
-			// Forget the list
-			headIndex = -1;
-			tailIndex = -1;
-			count = 0;
-			capacity = 0;
+			if (state != null)
+			{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				DisposeSentinel.Dispose(m_Safety, ref m_DisposeSentinel);
+#endif
 
-			// Invalidate all iterators
-			version++;
+				// Free the state's contents
+				UnsafeUtility.Free(state->Datas, state->Allocator);
+				state->Datas = null;
+				UnsafeUtility.Free(state->NextIndexes, state->Allocator);
+				state->NextIndexes = null;
+				UnsafeUtility.Free(state->PrevIndexes, state->Allocator);
+				state->PrevIndexes = null;
+
+				// Forget the list
+				state->HeadIndex = -1;
+				state->TailIndex = -1;
+				state->Length = 0;
+				state->Capacity = 0;
+
+				// Invalidate all enumerators
+				state->Version++;
+
+				// Free the state itself
+				UnsafeUtility.Free(state, state->Allocator);
+				state = null;
+			}
 		}
 
-		private void InsertAtEnd(
+		/// <summary>
+		/// Copy all the nodes of a list to the end of the arrays. The list must
+		/// already have sufficient capacity to hold all the nodes of the list
+		/// to copy.
+		/// </summary>
+		/// 
+		/// <param name="list">
+		/// List to copy. Must not be empty.
+		/// </param>
+		/// 
+		/// <param name="copiedHeadIndex">
+		/// Index that the list's head node was copied to
+		/// </param>
+		/// 
+		/// <param name="copiedTailIndex">
+		/// Index that the list's tail node was copied to
+		/// </param>
+		private void CopyToEnd(
 			NativeLinkedList<T> list,
-			out int insertedHeadIndex,
-			out int insertedTailIndex)
+			out int copiedHeadIndex,
+			out int copiedTailIndex)
 		{
-			// Insert the list's node datas at the end. Copying datas with
-			// slices is more efficient due to the use of UnsafeUtility.MemCpy.
-			int endIndex = count;
-			new NativeSlice<T>(datas, endIndex, list.count).CopyFrom(
-				new NativeSlice<T>(list.datas, 0, list.count));
+			RequireValidState();
+			RequireReadAccess();
+			RequireWriteAccess();
 
-			// Insert the list's next and prev pointers at the end, offset for
+			// Copy the list's node datas at the end. Copying with stride is
+			// the same way NativeSlice<T> copies.
+			int endIndex = state->Length;
+			RequireRangeInBounds(
+				endIndex,
+				endIndex + list.Length - 1);
+			int sizeofT = UnsafeUtility.SizeOf<T>();
+			UnsafeUtility.MemCpyStride(
+				(byte*)state->Datas + sizeofT * endIndex,
+				sizeofT,
+				list.state->Datas,
+				sizeofT,
+				sizeofT,
+				list.state->Length);
+
+			// Copy the list's next and prev pointers at the end, offset for
 			// the new location at the end of this list.
-			for (int i = 0; i < list.count; ++i)
+			for (int i = 0; i < list.state->Length; ++i)
 			{
-				nextIndexes[endIndex + i] = list.nextIndexes[i] + endIndex;
+				state->NextIndexes[endIndex + i]
+					= list.state->NextIndexes[i] + endIndex;
 			}
-			for (int i = 0; i < list.count; ++i)
+			for (int i = 0; i < list.state->Length; ++i)
 			{
-				prevIndexes[endIndex + i] = list.prevIndexes[i] + endIndex;
+				state->PrevIndexes[endIndex + i]
+					= list.state->PrevIndexes[i] + endIndex;
 			}
 
 			// Re-set the list's head and tail pointers since we offset them
-			insertedHeadIndex = endIndex + list.headIndex;
-			insertedTailIndex = endIndex + list.tailIndex;
-			nextIndexes[insertedTailIndex] = -1;
-			prevIndexes[insertedHeadIndex] = -1;
+			copiedHeadIndex = endIndex + list.state->HeadIndex;
+			copiedTailIndex = endIndex + list.state->TailIndex;
+			state->NextIndexes[copiedTailIndex] = -1;
+			state->PrevIndexes[copiedHeadIndex] = -1;
 		}
 
 		/// <summary>
@@ -1563,81 +1914,194 @@ namespace NativeCollections
 		/// </param>
 		private void IncreaseCapacity(int newCapacity)
 		{
+			RequireValidState();
+			RequireReadAccess();
+			RequireWriteAccess();
+			RequireFullListSafetyCheckBounds();
+
 			// Resize datas
-			NativeArray<T> newDatas = new NativeArray<T>(
-				newCapacity,
-				allocator);
-			UnsafeUtility.MemCpy(
-				newDatas.GetUnsafePtr(),
-				datas.GetUnsafePtr(),
-				capacity * (long)UnsafeUtility.SizeOf<T>());
-			datas.Dispose();
-			datas = newDatas;
+			int sizeofT = UnsafeUtility.SizeOf<T>();
+			void* newDatas = UnsafeUtility.Malloc(
+				newCapacity * sizeofT,
+				UnsafeUtility.AlignOf<T>(),
+				state->Allocator);
+			UnsafeUtility.MemCpyStride(
+				newDatas,
+				sizeofT,
+				state->Datas,
+				sizeofT,
+				sizeofT,
+				state->Length);
+			UnsafeUtility.Free(state->Datas, state->Allocator);
+			state->Datas = newDatas;
 
 			// Resize nextIndexes
-			NativeArray<int> newNextIndexes = new NativeArray<int>(
-				newCapacity,
-				allocator);
+			int* newNextIndexes = (int*)UnsafeUtility.Malloc(
+				newCapacity * sizeof(int),
+				UnsafeUtility.AlignOf<int>(),
+				state->Allocator);
 			UnsafeUtility.MemCpy(
-				newNextIndexes.GetUnsafePtr(),
-				nextIndexes.GetUnsafePtr(),
-				capacity * (long)sizeof(int));
-			nextIndexes.Dispose();
-			nextIndexes = newNextIndexes;
+				newNextIndexes,
+				state->NextIndexes,
+				state->Length * sizeof(int));
+			UnsafeUtility.Free(state->NextIndexes, state->Allocator);
+			state->NextIndexes = newNextIndexes;
 
 			// Resize prevIndexes
-			NativeArray<int> newPrevIndexes = new NativeArray<int>(
-				newCapacity,
-				allocator);
+			int* newPrevIndexes = (int*)UnsafeUtility.Malloc(
+				newCapacity * sizeof(int),
+				UnsafeUtility.AlignOf<int>(),
+				state->Allocator);
 			UnsafeUtility.MemCpy(
-				newPrevIndexes.GetUnsafePtr(),
-				prevIndexes.GetUnsafePtr(),
-				capacity * (long)sizeof(int));
-			prevIndexes.Dispose();
-			prevIndexes = newPrevIndexes;
+				newPrevIndexes,
+				state->PrevIndexes,
+				state->Length * sizeof(int));
+			UnsafeUtility.Free(state->PrevIndexes, state->Allocator);
+			state->PrevIndexes = newPrevIndexes;
 
-			capacity = newCapacity;
+			state->Capacity = newCapacity;
 		}
 
-		// Throw an error if the given index isn't in the range
-		// [m_MinIndex, m_MaxIndex]
+		/// <summary>
+		/// Update the safety range's m_Length and also m_MaxIndex if it was
+		/// at the end of the array and the list isn't currently being used by
+		/// a ParallelFor job.
+		/// </summary>
+		/// 
+		/// <param name="length">
+		/// New length to set
+		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		private void FailIfIndexOutOfCheckBounds(int index)
+		private void SetSafetyRange(int length)
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-			if (index < m_MinIndex || index > m_MaxIndex)
+			// Max is at the last element, so it's a candidate for adjustment.
+			// We don't want to adjust it if we're in the middle of a
+			// ParallelFor job though since we'd then widen the acceptable
+			// range of access which could cause data contention issues among
+			// parallel executions of the same job. So check for that case and
+			// only adjust the max if the min is zero, as it would only be
+			// outside of a ParallelFor job execution. This is the case because
+			// the min and max are set during the job execution with the min
+			// only being zero when the job is processing the first element,
+			// which wouldn't be the case if the max is also at the last
+			// element.
+			if (m_MaxIndex == m_Length - 1 && m_MinIndex == 0)
 			{
-				FailOutOfRangeError(index);
+				m_MaxIndex = length - 1;
 			}
+
+			m_Length = length;
 #endif
 		}
 
-		// Throw an appropriate exception when safety checks are enabled
+		/// <summary>
+		/// Throw an exception when an index is out of the safety check bounds:
+		///   [m_MinIndex, m_MaxIndex]
+		/// and the list is being used by a ParallelFor job or when the index
+		/// is out of the capacity:
+		///   [0, state->Capacity]
+		/// </summary>
+		/// 
+		/// <param name="index">
+		/// Index that must be in the safety check bounds
+		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		private void FailOutOfRangeError(int index)
+		private void RequireIndexInBounds(int index)
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-			if (index < m_Length
+			// The index is out of the safety check bounds and the min or max
+			// is set to their non-default values indicating that the list is
+			// being used in a ParallelFor job.
+			if (
+				(index < m_MinIndex || index > m_MaxIndex)
 				&& (m_MinIndex != 0 || m_MaxIndex != m_Length - 1))
 			{
 				throw new IndexOutOfRangeException(
-					string.Format("Index {0} is out of restricted ParallelFor ", index) +
-					string.Format("range [{0}...{1}] in ", m_MinIndex, m_MaxIndex) +
-					"ReadWriteBuffer.\n ReadWriteBuffers are restricted to " +
-					"only read & write the node at the job index. You can " +
+					"Index " + index + " is out of restricted " +
+					"ParallelFor range [" + m_MinIndex +
+					"..." + m_MaxIndex + "] in ReadWriteBuffer.\n" +
+					"ReadWriteBuffers are restricted to only read and " +
+					"write the node at the job index. You can " +
 					"use double buffering strategies to avoid race " +
-					"conditions due to reading & writing in parallel to the " +
-					"same nodes from a job.");
+					"conditions due to reading and writing in parallel " +
+					"to the same nodes from a ParallelFor job.");
 			}
 
-			throw new IndexOutOfRangeException(
-				string.Format(
-					"Index {0} is out of range of '{1}' Length.",
-					index,
-					m_Length));
+			// The index is out of the capacity
+			RequireValidState();
+			if (index < 0 || index > state->Capacity)
+			{
+				throw new IndexOutOfRangeException(
+					"Index " + index + " is out of range of '" +
+					state->Capacity + "' Capacity.");
+			}
 #endif
 		}
 
+		/// <summary>
+		/// Throw an exception if the safety check bounds don't encompass the
+		/// full list.
+		/// </summary>
+		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		private void RequireFullListSafetyCheckBounds()
+		{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+			if (m_MinIndex > 0 || m_MaxIndex >= m_Length)
+			{
+				throw new IndexOutOfRangeException(
+					"This operation cannot be performed from a ParallelFor " +
+					"job because access to the full list is required.");
+			}
+#endif
+		}
+
+		/// <summary>
+		/// Throw an exception if the safety check bounds:
+		///   [m_MinIndex, m_MaxIndex]
+		/// don't encompass the given range and the list is being used by a
+		/// ParallelFor job or when the given range has any indices outside of
+		/// the list's capacity:
+		///   [0, state->Capacity]
+		/// </summary>
+		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		private void RequireRangeInBounds(
+			int startIndex,
+			int endIndex)
+		{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+			// The range is out of the safety check bounds and the min or max
+			// is set to their non-default values indicating that the list is
+			// being used in a ParallelFor job.
+			if (
+				(startIndex < m_MinIndex || endIndex > m_MaxIndex)
+				&& (m_MinIndex != 0 || m_MaxIndex != m_Length - 1))
+			{
+				throw new IndexOutOfRangeException(
+					"Range [" + startIndex + "..." + endIndex + "] is out of " +
+					"restricted ParallelFor range [" + m_MinIndex +
+					"..." + m_MaxIndex + "] in ReadWriteBuffer.\n" +
+					"ReadWriteBuffers are restricted to only read and " +
+					"write the node at the job index. You can " +
+					"use double buffering strategies to avoid race " +
+					"conditions due to reading and writing in parallel " +
+					"to the same nodes from a ParallelFor job.");
+			}
+
+			// The range is out of the capacity
+			RequireValidState();
+			if (m_MinIndex < 0 || m_MaxIndex >= state->Capacity)
+			{
+				throw new IndexOutOfRangeException(
+					"Range [" + startIndex + "..." + endIndex + "] is out of " +
+					"range of '" + state->Capacity + "' Capacity.");
+			}
+#endif
+		}
+
+		/// <summary>
+		/// Throw an exception if the list isn't readable
+		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		private unsafe void RequireReadAccess()
 		{
@@ -1646,11 +2110,30 @@ namespace NativeCollections
 #endif
 		}
 
+		/// <summary>
+		/// Throw an exception if the list isn't writable
+		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		private unsafe void RequireWriteAccess()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 			AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
+#endif
+		}
+
+		/// <summary>
+		/// Throw an exception if the state is null
+		/// </summary>
+		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		private unsafe void RequireValidState()
+		{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+			if (state == null)
+			{
+				throw new InvalidOperationException(
+					"NativeList was either not initialized via a non-default " +
+					"constructor or was used after calling Disposed()");
+			}
 #endif
 		}
 	}
@@ -1665,7 +2148,9 @@ namespace NativeCollections
 	internal sealed class NativeLinkedListDebugView<T>
 		where T : struct
 	{
-		// List to view
+		/// <summary>
+		/// List to view
+		/// </summary>
 		private NativeLinkedList<T> list;
 	 
 		/// <summary>
