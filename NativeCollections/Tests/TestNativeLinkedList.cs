@@ -4,6 +4,8 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
+using System.Collections;
+using System.Collections.Generic;
 using NUnit.Framework;
 using Unity.Collections;
 using Unity.Jobs;
@@ -55,14 +57,14 @@ namespace JacksonDunstan.NativeCollections.Tests
             
             // Forward iteration must cover exactly Length steps and match the
             // array returned by ToArray.
-            int[] datas = list.ToArray();
+            int[] values = list.ToArray();
             int numForwardIterations = 0;
 			for (NativeLinkedList<int>.Enumerator e = list.Head;
                 e.IsValid;
 				e.MoveNext())
             {
                 Assert.That(
-                    datas[numForwardIterations],
+                    values[numForwardIterations],
 					Is.EqualTo(e.Current));
                 numForwardIterations++;
             }
@@ -76,7 +78,7 @@ namespace JacksonDunstan.NativeCollections.Tests
                 e.MovePrev())
             {
                 Assert.That(
-                    datas[list.Length - 1 - numBackwardIterations],
+                    values[list.Length - 1 - numBackwardIterations],
                     Is.EqualTo(e.Current));
                 numBackwardIterations++;
             }
@@ -447,11 +449,11 @@ namespace JacksonDunstan.NativeCollections.Tests
 				NativeLinkedList<int>.Enumerator e20 = list.PushBack(20);
 				NativeLinkedList<int>.Enumerator e30 = list.PushBack(30);
 				list.Remove(e10);
-				// data = [ 30, 20, _ ]
-				//          t   h
+				// values = [ 30, 20, _ ]
+				//             t   h
 				NativeLinkedList<int>.Enumerator e5 = list.PushBack(5);
-				// data = [ 30, 20, 5 ]
-				//              h   t
+				// values = [ 30, 20, 5 ]
+				//                 h   t
 
 				list.SortNodeMemoryAddresses();
 
@@ -480,6 +482,157 @@ namespace JacksonDunstan.NativeCollections.Tests
                 AssertGeneralInvariants(list);
             }
         }
+
+		[Test]
+		public void GetHeadReturnsEnumeratorForFirstNode()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				Assert.That(e.Current, Is.EqualTo(10));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetEnumeratorReturnsInvalidEnumeratorForEmptyList()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				NativeLinkedList<int>.Enumerator e = list.GetEnumerator();
+
+				Assert.That(e.IsValid, Is.False);
+
+				e.MoveNext();
+
+				Assert.That(e.IsValid, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetEnumeratorReturnsEnumeratorThatMovesNextToFirstNode()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator e = list.GetEnumerator();
+
+				Assert.That(e.IsValid, Is.False);
+
+				e.MoveNext();
+
+				Assert.That(e.Current, Is.EqualTo(10));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetEnumeratorIEnumerableVersionReturnsInvalidEnumeratorForEmptyList()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				NativeLinkedList<int>.Enumerator e = (NativeLinkedList<int>.Enumerator)((IEnumerable)list).GetEnumerator();
+
+				Assert.That(e.IsValid, Is.False);
+
+				e.MoveNext();
+
+				Assert.That(e.IsValid, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetEnumeratorIEnumerableVersionReturnsEnumeratorForFirstNode()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator e = (NativeLinkedList<int>.Enumerator)((IEnumerable)list).GetEnumerator();
+
+				Assert.That(e.IsValid, Is.False);
+
+				e.MoveNext();
+
+				Assert.That(e.Current, Is.EqualTo(10));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetEnumeratorIEnumerableTVersionReturnsInvalidEnumeratorForEmptyList()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				NativeLinkedList<int>.Enumerator e = (NativeLinkedList<int>.Enumerator)((IEnumerable<int>)list).GetEnumerator();
+
+				Assert.That(e.IsValid, Is.False);
+
+				e.MoveNext();
+
+				Assert.That(e.IsValid, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetEnumeratorIEnumerableTVersionReturnsEnumeratorForFirstNode()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator e = (NativeLinkedList<int>.Enumerator)((IEnumerable<int>)list).GetEnumerator();
+
+				Assert.That(e.IsValid, Is.False);
+
+				e.MoveNext();
+
+				Assert.That(e.Current, Is.EqualTo(10));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void ForeachTraversesList()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				Assert.That(list, Is.EqualTo(new [] { 10, 20, 30, 40 }));
+
+				AssertGeneralInvariants(list);
+			}
+		}
     
         [Test]
         public void GetTailReturnsInvalidEnumeratorForEmptyList()
@@ -493,97 +646,27 @@ namespace JacksonDunstan.NativeCollections.Tests
                 AssertGeneralInvariants(list);
             }
         }
-        
-        [Test]
-        public void MoveNextTraversesListForward()
-        {
+
+		[Test]
+		public void GetTailReturnsEnumeratorForLastNode()
+		{
 			using (NativeLinkedList<int> list = CreateList(3))
-            {
-                list.PushBack(10);
-                list.PushBack(20);
-                list.PushBack(30);
-                list.PushBack(40);
-                list.PushBack(50);
-                
-				NativeLinkedList<int>.Enumerator e = list.Head;
-                
-                Assert.That(e.IsValid, Is.True);
-                Assert.That(e.Current, Is.EqualTo(10));
-    
-                e.MoveNext();
-                
-                Assert.That(e.IsValid, Is.True);
-                Assert.That(e.Current, Is.EqualTo(20));
-                
-                e.MoveNext();
-                
-                Assert.That(e.IsValid, Is.True);
-                Assert.That(e.Current, Is.EqualTo(30));
-                
-                e.MoveNext();
-                
-                Assert.That(e.IsValid, Is.True);
-                Assert.That(e.Current, Is.EqualTo(40));
-                
-                e.MoveNext();
-                
-                Assert.That(e.IsValid, Is.True);
-                Assert.That(e.Current, Is.EqualTo(50));
-                
-                e.MoveNext();
-                
-                Assert.That(e.IsValid, Is.False);
-                
-                AssertGeneralInvariants(list);
-            }
-        }
-        
-        [Test]
-        public void MovePrevTraversesListBackward()
-        {
-			using (NativeLinkedList<int> list = CreateList(3))
-            {
-                list.PushBack(10);
-                list.PushBack(20);
-                list.PushBack(30);
-                list.PushBack(40);
-                list.PushBack(50);
-                
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
 				NativeLinkedList<int>.Enumerator e = list.Tail;
-                
-                Assert.That(e.IsValid, Is.True);
-                Assert.That(e.Current, Is.EqualTo(50));
-    
-                e.MovePrev();
-                
-                Assert.That(e.IsValid, Is.True);
-                Assert.That(e.Current, Is.EqualTo(40));
-                
-                e.MovePrev();
-                
-                Assert.That(e.IsValid, Is.True);
-                Assert.That(e.Current, Is.EqualTo(30));
-                
-                e.MovePrev();
-                
-                Assert.That(e.IsValid, Is.True);
-                Assert.That(e.Current, Is.EqualTo(20));
-                
-                e.MovePrev();
-                
-                Assert.That(e.IsValid, Is.True);
-                Assert.That(e.Current, Is.EqualTo(10));
-                
-                e.MovePrev();
-                
-                Assert.That(e.IsValid, Is.False);
-                
-                AssertGeneralInvariants(list);
-            }
-        }
+
+				Assert.That(e.Current, Is.EqualTo(40));
+
+				AssertGeneralInvariants(list);
+			}
+		}
         
         [Test]
-        public void SetCurrentSetsNodeData()
+        public void MoveNextMakesEnumeratorReferToNextNode()
         {
 			using (NativeLinkedList<int> list = CreateList(3))
             {
@@ -591,32 +674,710 @@ namespace JacksonDunstan.NativeCollections.Tests
                 list.PushBack(20);
                 list.PushBack(30);
                 list.PushBack(40);
+				NativeLinkedList<int>.Enumerator e = list.Head;
+                
+                e.MoveNext();
+                
+                Assert.That(e.Current, Is.EqualTo(20));
+                
+                AssertGeneralInvariants(list);
+            }
+        }
+
+		[Test]
+		public void MoveNextAtTailInvalidatesEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				NativeLinkedList<int>.Enumerator e = list.Tail;
+
+				e.MoveNext();
+
+				Assert.That(e.IsValid, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void MoveNextWithInvalidEnumeratorKeepsEnumeratorInvalid()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				NativeLinkedList<int>.Enumerator e = NativeLinkedList<int>.Enumerator.MakeInvalid();
+
+				e.MoveNext();
+
+				Assert.That(e.IsValid, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void MoveNextWhenPreviouslyValidMakesEnumeratorReferToHead()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				NativeLinkedList<int>.Enumerator e = list.PushBack(40);
+				e.MoveNext();
+
+				e.MoveNext();
+
+				Assert.That(e.Current, Is.EqualTo(10));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetNextReturnsEnumeratorToNextNode()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				NativeLinkedList<int>.Enumerator ret = e.Next;
+
+				Assert.That(ret.Current, Is.EqualTo(20));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetNextAtTailReturnsInvalidEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				NativeLinkedList<int>.Enumerator e = list.Tail;
+
+				NativeLinkedList<int>.Enumerator ret = e.Next;
+
+				Assert.That(ret.IsValid, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetNextWithInvalidEnumeratorReturnsInvalidEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				NativeLinkedList<int>.Enumerator e = NativeLinkedList<int>.Enumerator.MakeInvalid();
+
+				NativeLinkedList<int>.Enumerator ret = e.Next;
+
+				Assert.That(ret.IsValid, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetNextWhenPreviouslyValidReturnsHead()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				NativeLinkedList<int>.Enumerator e = list.PushBack(40);
+				e.MoveNext();
+
+				NativeLinkedList<int>.Enumerator ret = e.Next;
+
+				Assert.That(ret.Current, Is.EqualTo(10));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+        
+        [Test]
+		public void MovePrevMakesEnumeratorReferToPreviousNode()
+        {
+			using (NativeLinkedList<int> list = CreateList(3))
+            {
+                list.PushBack(10);
+                list.PushBack(20);
+                list.PushBack(30);
+                list.PushBack(40);
+                NativeLinkedList<int>.Enumerator e = list.Tail;
+                
+                e.MovePrev();
+                
+                Assert.That(e.Current, Is.EqualTo(30));
+                
+                AssertGeneralInvariants(list);
+            }
+        }
+
+		[Test]
+		public void MovePrevAtHeadInvalidatesEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				e.MovePrev();
+
+				Assert.That(e.IsValid, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void MovePrevWithInvalidEnumeratorKeepsEnumeratorInvalid()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				NativeLinkedList<int>.Enumerator e = NativeLinkedList<int>.Enumerator.MakeInvalid();
+
+				e.MovePrev();
+
+				Assert.That(e.IsValid, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void MovePrevWhenPreviouslyValidMakesEnumeratorReferToTail()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				NativeLinkedList<int>.Enumerator e = list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				e.MovePrev();
+
+				e.MovePrev();
+
+				Assert.That(e.Current, Is.EqualTo(40));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetPrevReturnsEnumeratorToPreviousNode()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				NativeLinkedList<int>.Enumerator e = list.Tail;
+
+				NativeLinkedList<int>.Enumerator ret = e.Prev;
+
+				Assert.That(ret.Current, Is.EqualTo(30));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetPrevAtHeadReturnsInvalidEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				NativeLinkedList<int>.Enumerator ret = e.Prev;
+
+				Assert.That(ret.IsValid, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetPrevWithInvalidEnumeratorReturnsInvalidEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				NativeLinkedList<int>.Enumerator e = NativeLinkedList<int>.Enumerator.MakeInvalid();
+
+				NativeLinkedList<int>.Enumerator ret = e.Prev;
+
+				Assert.That(ret.IsValid, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetPrevWhenPreviouslyValidReturnsTail()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				NativeLinkedList<int>.Enumerator e = list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				e.MovePrev();
+
+				NativeLinkedList<int>.Enumerator ret = e.Prev;
+
+				Assert.That(ret.Current, Is.EqualTo(40));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void MakeInvalidReturnsInvalidEnumerator()
+		{
+			NativeLinkedList<int>.Enumerator e = NativeLinkedList<int>.Enumerator.MakeInvalid();
+
+			Assert.That(e.IsValid, Is.False);
+		}
+
+		[Test]
+		public void EnumeratorEqualityOperatorReturnsTrueForSameNode()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator a = list.Head;
+				NativeLinkedList<int>.Enumerator b = list.Head;
+
+				Assert.That(a == b, Is.True);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorEqualityOperatorReturnsFalseWhenOneNodeIsInvalid()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				NativeLinkedList<int>.Enumerator invalid = NativeLinkedList<int>.Enumerator.MakeInvalid();
+
+				Assert.That(e == invalid, Is.False);
+				Assert.That(invalid == e, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorEqualityOperatorReturnsFalseForDifferentNodes()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator a = list.Head;
+				NativeLinkedList<int>.Enumerator b = a.Next;
+
+				Assert.That(a == b, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorEqualityOperatorReturnsFalseForDifferentLists()
+		{
+			using (NativeLinkedList<int> listA = CreateList(3))
+			{
+				listA.PushBack(10);
+				listA.PushBack(20);
+				listA.PushBack(30);
+				listA.PushBack(40);
+
+				using (NativeLinkedList<int> listB = CreateList(3))
+				{
+					listB.PushBack(10);
+					listB.PushBack(20);
+					listB.PushBack(30);
+					listB.PushBack(40);
+
+					NativeLinkedList<int>.Enumerator a = listA.Head;
+					NativeLinkedList<int>.Enumerator b = listB.Head;
+
+					Assert.That(a == b, Is.False);
+
+					AssertGeneralInvariants(listA);
+					AssertGeneralInvariants(listB);
+				}
+			}
+		}
+
+		[Test]
+		public void EnumeratorEqualsReturnsTrueForSameNode()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator a = list.Head;
+				NativeLinkedList<int>.Enumerator b = list.Head;
+
+				Assert.That(a.Equals(b), Is.True);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorEqualsReturnsFalseWhenOneNodeIsInvalid()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				NativeLinkedList<int>.Enumerator invalid = NativeLinkedList<int>.Enumerator.MakeInvalid();
+
+				Assert.That(e.Equals(invalid), Is.False);
+				Assert.That(invalid.Equals(e), Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorEqualsReturnsFalseForDifferentNodes()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator a = list.Head;
+				NativeLinkedList<int>.Enumerator b = a.Next;
+
+				Assert.That(a.Equals(b), Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorEqualsReturnsFalseForDifferentLists()
+		{
+			using (NativeLinkedList<int> listA = CreateList(3))
+			{
+				listA.PushBack(10);
+				listA.PushBack(20);
+				listA.PushBack(30);
+				listA.PushBack(40);
+
+				using (NativeLinkedList<int> listB = CreateList(3))
+				{
+					listB.PushBack(10);
+					listB.PushBack(20);
+					listB.PushBack(30);
+					listB.PushBack(40);
+
+					NativeLinkedList<int>.Enumerator a = listA.Head;
+					NativeLinkedList<int>.Enumerator b = listB.Head;
+
+					Assert.That(a.Equals(b), Is.False);
+
+					AssertGeneralInvariants(listA);
+					AssertGeneralInvariants(listB);
+				}
+			}
+		}
+
+		[Test]
+		public void EnumeratorEqualsReturnsFalseForNonEnumeratorType()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator a = list.Head;
+
+				Assert.That(a.Equals("not an enumerator"), Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorInequalityOperatorReturnsFalseForSameNode()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator a = list.Head;
+				NativeLinkedList<int>.Enumerator b = list.Head;
+
+				Assert.That(a != b, Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorInequalityOperatorReturnsTrueWhenOneNodeIsInvalid()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				NativeLinkedList<int>.Enumerator invalid = NativeLinkedList<int>.Enumerator.MakeInvalid();
+
+				Assert.That(e != invalid, Is.True);
+				Assert.That(invalid != e, Is.True);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorInequalityOperatorReturnsTrueForDifferentNodes()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator a = list.Head;
+				NativeLinkedList<int>.Enumerator b = a.Next;
+
+				Assert.That(a != b, Is.True);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorInequalityOperatorReturnsTrueForDifferentLists()
+		{
+			using (NativeLinkedList<int> listA = CreateList(3))
+			{
+				listA.PushBack(10);
+				listA.PushBack(20);
+				listA.PushBack(30);
+				listA.PushBack(40);
+
+				using (NativeLinkedList<int> listB = CreateList(3))
+				{
+					listB.PushBack(10);
+					listB.PushBack(20);
+					listB.PushBack(30);
+					listB.PushBack(40);
+
+					NativeLinkedList<int>.Enumerator a = listA.Head;
+					NativeLinkedList<int>.Enumerator b = listB.Head;
+
+					Assert.That(a != b, Is.True);
+
+					AssertGeneralInvariants(listA);
+					AssertGeneralInvariants(listB);
+				}
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetHashCodeReturnsDifferentValuesForDifferentNodes()
+		{
+			using (NativeLinkedList<int> listA = CreateList(3))
+			{
+				NativeLinkedList<int>.Enumerator a = listA.PushBack(10);
+				NativeLinkedList<int>.Enumerator b = listA.PushBack(20);
+				listA.PushBack(30);
+				listA.PushBack(40);
+
+				int aHashCode = a.GetHashCode();
+				int bHashCode = b.GetHashCode();
+
+				Assert.That(aHashCode, Is.Not.EqualTo(bHashCode));
+
+				AssertGeneralInvariants(listA);
+			}
+		}
+
+		[Test]
+		public void EnumeratorDisposeDoesNotThrowException()
+		{
+			using (NativeLinkedList<int> listA = CreateList(3))
+			{
+				NativeLinkedList<int>.Enumerator e = listA.PushBack(10);
+				listA.PushBack(20);
+				listA.PushBack(30);
+				listA.PushBack(40);
+
+				Assert.That(() => e.Dispose(), Throws.Nothing);
+
+				AssertGeneralInvariants(listA);
+			}
+		}
+
+		[Test]
+		public void ResetMakesEnumeratorReferToHead()
+		{
+			using (NativeLinkedList<int> listA = CreateList(3))
+			{
+				listA.PushBack(10);
+				listA.PushBack(20);
+				NativeLinkedList<int>.Enumerator e = listA.PushBack(30);
+				listA.PushBack(40);
+
+				e.Reset();
+
+				Assert.That(e.Current, Is.EqualTo(10));
+
+				AssertGeneralInvariants(listA);
+			}
+		}
+
+		[Test]
+		public void ResetInvalidEnumeratorKeepsEnumeratorInvalid()
+		{
+			using (NativeLinkedList<int> listA = CreateList(3))
+			{
+				listA.PushBack(10);
+				listA.PushBack(20);
+				listA.PushBack(30);
+				listA.PushBack(40);
+				NativeLinkedList<int>.Enumerator e = NativeLinkedList<int>.Enumerator.MakeInvalid();
+
+				e.Reset();
+
+				Assert.That(e.IsValid, Is.False);
+
+				AssertGeneralInvariants(listA);
+			}
+		}
+
+		[Test]
+		public void GetCurrentReturnsNodeValue()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				NativeLinkedList<int>.Enumerator e = list.PushBack(30);
+				list.PushBack(40);
+				list.PushBack(50);
+
+				Assert.That(e.Current, Is.EqualTo(30));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetIEnumeratorCurrentReturnsNodeValue()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				NativeLinkedList<int>.Enumerator e = list.PushBack(30);
+				list.PushBack(40);
+				list.PushBack(50);
+
+				Assert.That(((IEnumerator)e).Current, Is.EqualTo(30));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+        [Test]
+        public void SetCurrentSetsNodeValue()
+        {
+			using (NativeLinkedList<int> list = CreateList(3))
+            {
+                list.PushBack(10);
+                list.PushBack(20);
+				NativeLinkedList<int>.Enumerator e = list.PushBack(30);
+                list.PushBack(40);
                 list.PushBack(50);
                 
-				NativeLinkedList<int>.Enumerator e = list.Head;
-                e.Current = 100;
+				e.Current = 100;
+
 				Assert.That(e.Current, Is.EqualTo(100));
                 
-                e.MoveNext();
-                e.Current = 200;
-				Assert.That(e.Current, Is.EqualTo(200));
-                
-                e.MoveNext();
-                e.Current = 300;
-				Assert.That(e.Current, Is.EqualTo(300));
-                
-                e.MoveNext();
-                e.Current = 400;
-				Assert.That(e.Current, Is.EqualTo(400));
-                
-                e.MoveNext();
-                e.Current = 500;
-				Assert.That(e.Current, Is.EqualTo(500));
-                
                 AssertGeneralInvariants(list);
             }
-        }
-        
+		}
+
         [Test]
         public void RemoveDoesNothingWhenEnumeratorIsInvalid()
         {
@@ -802,7 +1563,7 @@ namespace JacksonDunstan.NativeCollections.Tests
         }
 
         [Test]
-        public void ToArrayReturnsNodeDataInOrder()
+        public void ToArrayReturnsNodeValueInOrder()
         {
 			using (NativeLinkedList<int> list = CreateList(3))
             {
@@ -819,7 +1580,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void ToArrayReverseReturnsNodeDataInReverseOrder()
+		public void ToArrayReverseReturnsNodeValueInReverseOrder()
 		{
 			using (NativeLinkedList<int> list = CreateList(3))
 			{

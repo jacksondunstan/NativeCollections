@@ -22,17 +22,17 @@ namespace JacksonDunstan.NativeCollections
 	internal unsafe struct NativeLinkedListState
 	{
 		/// <summary>
-		/// Each node's data. Indices correspond with nextIndexes.
+		/// Each node's value. Indices correspond with nextIndexes.
 		/// </summary>
-		internal void* Datas;
+		internal void* Values;
 
 		/// <summary>
-		/// Each node's next node index. Indices correspond with datas.
+		/// Each node's next node index. Indices correspond with values.
 		/// </summary>
 		internal int* NextIndexes;
 
 		/// <summary>
-		/// Each node's previous node index. Indices correspond with datas.
+		/// Each node's previous node index. Indices correspond with values.
 		/// </summary>
 		internal int* PrevIndexes;
 
@@ -155,120 +155,168 @@ namespace JacksonDunstan.NativeCollections
 			}
 
 			/// <summary>
-			/// Get an enumerator to the next node or an invalid enumerator if
-			/// this enumerator is at the tail of the list or is invalid.
+			/// Get an enumerator to the next node.
 			///
 			/// This operation is O(1).
 			/// </summary>
 			/// 
 			/// <returns>
-			/// An enumerator to the next node or an invalid enumerator if this
-			/// enumerator is at the tail of the list or is invalid.
+			/// If this enumerator is valid, an enumerator to the next node or
+			/// an invalid enumerator if at the tail node. If this enumerator is
+			/// invalid but was constructed via the non-default constructor and
+			/// the list it enumerates has not been disposed and has not
+			/// invalidated this enumerator, an enumerator to the head node.
+			/// Otherwise, an invalid enumerator.
 			/// </returns>
 			public Enumerator Next
 			{
 				get
 				{
-					list.RequireValidState();
-					list.RequireReadAccess();
-
-					if (IsValid)
+					// Have a valid list and the version matches
+					if (list.state != null && Version == list.state->Version)
 					{
-						list.RequireIndexInBounds(Index);
+						// Still within the list. The enumerator is valid.
+						if (Index >= 0 && Index < list.state->Length)
+						{
+							// Return the next node
+							list.RequireReadAccess();
+							list.RequireIndexInBounds(Index);
+							return new Enumerator(
+								list,
+								list.state->NextIndexes[Index],
+								Version);
+						}
+
+						// Not within the list. Return the head.
 						return new Enumerator(
 							list,
-							list.state->NextIndexes[Index],
+							list.state->HeadIndex,
 							Version);
 					}
+
+					// No valid list
 					return MakeInvalid();
 				}
 			}
 
 			/// <summary>
-			/// Get an enumerator to the previous node or an invalid enumerator
-			/// if this enumerator is at the head of the list or is invalid.
+			/// Get an enumerator to the previous node
 			///
 			/// This operation is O(1).
 			/// </summary>
 			/// 
 			/// <returns>
-			/// An enumerator to the previous node or an invalid enumerator if
-			/// this enumerator is at the head of the list or is invalid.
+			/// If this enumerator is valid, an enumerator to the previous node
+			/// or an invalid enumerator if at the head node. If this enumerator
+			/// is invalid but was constructed via the non-default constructor
+			/// and the list it enumerates has not been disposed and has not
+			/// invalidated this enumerator, an enumerator to the tail node.
+			/// Otherwise, an invalid enumerator.
 			/// </returns>
 			public Enumerator Prev
 			{
 				get
 				{
-					list.RequireValidState();
-					list.RequireReadAccess();
-
-					if (IsValid)
+					// Have a valid list and the version matches
+					if (list.state != null && Version == list.state->Version)
 					{
-						list.RequireIndexInBounds(Index);
+						// Still within the list. The enumerator is valid.
+						if (Index >= 0 && Index < list.state->Length)
+						{
+							// Return the previous node
+							list.RequireReadAccess();
+							list.RequireIndexInBounds(Index);
+							return new Enumerator(
+								list,
+								list.state->PrevIndexes[Index],
+								Version);
+						}
+
+						// Not within the list. Return the tail.
 						return new Enumerator(
 							list,
-							list.state->PrevIndexes[Index],
+							list.state->TailIndex,
 							Version);
 					}
+
+					// No valid list
 					return MakeInvalid();
 				}
 			}
 
 			/// <summary>
-			/// Move to the next node or invalid this enumerator if at the tail.
-			/// This function has no effect if this enumerator is invalid.
+			/// If this enumerator is valid, move to the next node or
+			/// invalidate this enumerator if at the tail node. If this
+			/// enumerator is invalid but was constructed via the non-default
+			/// constructor and the list it enumerates has not been disposed and
+			/// has not invalidated this enumerator, move to the head node.
+			/// Otherwise, this function has no effect.
 			///
 			/// This operation is O(1).
 			/// </summary>
 			/// 
 			/// <returns>
-			/// If this enumerator is still valid
+			/// If this enumerator is valid
 			/// </returns>
 			public bool MoveNext()
 			{
-				list.RequireValidState();
-				list.RequireReadAccess();
-
-				if (IsValid)
+				// Have a valid list and the version matches
+				if (list.state != null && Version == list.state->Version)
 				{
-					list.RequireIndexInBounds(Index);
-					Index = list.state->NextIndexes[Index];
-					return Index >= 0;
+					// Still within the list. The enumerator is valid.
+					if (Index >= 0 && Index < list.state->Length)
+					{
+						// Go to the next node
+						list.RequireReadAccess();
+						list.RequireIndexInBounds(Index);
+						Index = list.state->NextIndexes[Index];
+						return Index >= 0;
+					}
+
+					// Not within the list. Go to the head.
+					Index = list.state->HeadIndex;
+					return true;
 				}
 
-				// Invalidate
-				Index = -1;
-				Version = -1;
-				list = default(NativeLinkedList<T>);
+				// Already invalid
 				return false;
 			}
 
 			/// <summary>
-			/// Move to the previous node or invalid this enumerator if at the
-			/// head. This function has no effect if this enumerator is invalid.
+			/// If this enumerator is valid, move to the previous node or
+			/// invalidate this enumerator if at the head node. If this
+			/// enumerator is invalid but was constructed via the non-default
+			/// constructor and the list it enumerates has not been disposed and
+			/// has not invalidated this enumerator, move to the tail node.
+			/// Otherwise, this function has no effect.
 			///
 			/// This operation is O(1).
 			/// </summary>
 			/// 
 			/// <returns>
-			/// If this iterator is still valid
+			/// If this enumerator is valid
 			/// </returns>
 			public bool MovePrev()
 			{
-				list.RequireValidState();
-				list.RequireReadAccess();
-
-				if (IsValid)
+				// Have a valid list and the version matches
+				if (list.state != null && Version == list.state->Version)
 				{
-					list.RequireIndexInBounds(Index);
-					Index = list.state->PrevIndexes[Index];
-					return Index >= 0;
+					// Still within the list. The enumerator is valid.
+					if (Index >= 0 && Index < list.state->Length)
+					{
+						// Go to the previous node
+						list.RequireReadAccess();
+						list.RequireIndexInBounds(Index);
+						Index = list.state->PrevIndexes[Index];
+						return Index >= 0;
+					}
+
+					// Not within the list. Go to the tail.
+					Index = list.state->TailIndex;
+					return true;
 				}
 
-				// Invalidate
-				Index = -1;
-				Version = -1;
-				list = default(NativeLinkedList<T>);
+				// Already invalid
 				return false;
 			}
 
@@ -415,51 +463,43 @@ namespace JacksonDunstan.NativeCollections
 			}
 
 			/// <summary>
-			/// Get or set a node's data
+			/// Get or set a node's value
 			///
 			/// This operation is O(1).
 			/// </summary>
 			/// 
 			/// <value>
-			/// The node's value. If the enumerator is invalid, the default
-			/// is returned in the 'get' case and the 'set' has no effect.
+			/// The node's value
 			/// </value>
 			public T Current
 			{
 				get
 				{
-					if (IsValid)
-					{
-						list.RequireValidState();
-						list.RequireReadAccess();
-						list.RequireIndexInBounds(Index);
-						return UnsafeUtility.ReadArrayElement<T>(
-							list.state->Datas,
-							Index);
-					}
-					return default(T);
+					list.RequireValidState();
+					list.RequireReadAccess();
+					list.RequireIndexInBounds(Index);
+					return UnsafeUtility.ReadArrayElement<T>(
+						list.state->Values,
+						Index);
 				}
 
 				[WriteAccessRequired]
 				set
 				{
-					if (IsValid)
-					{
-						list.RequireValidState();
-						list.RequireWriteAccess();
-						list.RequireIndexInBounds(Index);
-						UnsafeUtility.WriteArrayElement(
-							list.state->Datas,
-							Index,
-							value);
-					}
+					list.RequireValidState();
+					list.RequireWriteAccess();
+					list.RequireIndexInBounds(Index);
+					UnsafeUtility.WriteArrayElement(
+						list.state->Values,
+						Index,
+						value);
 				}
 			}
 
 			/// <summary>
-			/// Get a node's data. Prefer using the generic version of
+			/// Get a node's value. Prefer using the generic version of
 			/// <see cref="Current"/> as this will cause boxing when enumerating
-			/// value type node data. This is provided only for compatibility
+			/// value type node value. This is provided only for compatibility
 			/// with <see cref="IEnumerator"/>. As such, there is no 'set' for
 			/// this non-generic property.
 			///
@@ -473,16 +513,12 @@ namespace JacksonDunstan.NativeCollections
 			{
 				get
 				{
-					if (IsValid)
-					{
-						list.RequireValidState();
-						list.RequireReadAccess();
-						list.RequireIndexInBounds(Index);
-						return UnsafeUtility.ReadArrayElement<T>(
-							list.state->Datas,
-							Index);
-					}
-					return null;
+					list.RequireValidState();
+					list.RequireReadAccess();
+					list.RequireIndexInBounds(Index);
+					return UnsafeUtility.ReadArrayElement<T>(
+						list.state->Values,
+						Index);
 				}
 			}
 		}
@@ -550,7 +586,7 @@ namespace JacksonDunstan.NativeCollections
 
 			// Create the backing arrays. There's no need to clear them since we
 			// make no assumptions about the contents anyways.
-			state->Datas = UnsafeUtility.Malloc(
+			state->Values = UnsafeUtility.Malloc(
 				UnsafeUtility.SizeOf<T>() * capacity,
 				UnsafeUtility.AlignOf<T>(),
 				allocator
@@ -655,51 +691,60 @@ namespace JacksonDunstan.NativeCollections
 		}
 
 		/// <summary>
-		/// Get an enumerator to the head of the list or an invalid enumerator
-		/// if the list is empty.
+		/// Get an invalid enumerator that will refer to the head of the list
+		/// after a call to <see cref="Enumerator.MoveNext"/> or
+		/// <see cref="Enumerator.Next"/>.
 		/// 
 		/// This operation is O(1).
 		/// </summary>
 		/// 
 		/// <value>
-		/// An enumerator to the head of the list or an invalid enumerator if
-		/// the list is empty.
+		/// An invalid enumerator that will refer to the head of the list
+		/// after a call to <see cref="Enumerator.MoveNext"/> or
+		/// <see cref="Enumerator.Next"/>.
 		/// </value>
 		public Enumerator GetEnumerator()
 		{
-			return Head;
+			RequireValidState();
+			return new Enumerator(this, -1, state->Version);
 		}
 
 		/// <summary>
-		/// Get an enumerator to the head of the list or an invalid enumerator
-		/// if the list is empty.
+		/// Get an invalid enumerator that will refer to the head of the list
+		/// after a call to <see cref="Enumerator.MoveNext"/> or
+		/// <see cref="Enumerator.Next"/>.
 		/// 
 		/// This operation is O(1).
 		/// </summary>
 		/// 
 		/// <value>
-		/// An enumerator to the head of the list or an invalid enumerator if
-		/// the list is empty.
+		/// An invalid enumerator that will refer to the head of the list
+		/// after a call to <see cref="Enumerator.MoveNext"/> or
+		/// <see cref="Enumerator.Next"/>.
 		/// </value>
 		IEnumerator<T> IEnumerable<T>.GetEnumerator()
 		{
-			return Head;
+			RequireValidState();
+			return new Enumerator(this, -1, state->Version);
 		}
 
 		/// <summary>
-		/// Get an enumerator to the head of the list or an invalid enumerator
-		/// if the list is empty.
+		/// Get an invalid enumerator that will refer to the head of the list
+		/// after a call to <see cref="Enumerator.MoveNext"/> or
+		/// <see cref="Enumerator.Next"/>.
 		/// 
 		/// This operation is O(1).
 		/// </summary>
 		/// 
 		/// <value>
-		/// An enumerator to the head of the list or an invalid enumerator if
-		/// the list is empty.
+		/// An invalid enumerator that will refer to the head of the list
+		/// after a call to <see cref="Enumerator.MoveNext"/> or
+		/// <see cref="Enumerator.Next"/>.
 		/// </value>
 		IEnumerator IEnumerable.GetEnumerator()
 		{
-			return Head;
+			RequireValidState();
+			return new Enumerator(this, -1, state->Version);
 		}
 
 		/// <summary>
@@ -721,7 +766,7 @@ namespace JacksonDunstan.NativeCollections
 				RequireValidState();
 				RequireReadAccess();
 				RequireIndexInBounds(index);
-				return UnsafeUtility.ReadArrayElement<T>(state->Datas, index);
+				return UnsafeUtility.ReadArrayElement<T>(state->Values, index);
 			}
 
 			[WriteAccessRequired]
@@ -730,7 +775,7 @@ namespace JacksonDunstan.NativeCollections
 				RequireValidState();
 				RequireWriteAccess();
 				RequireIndexInBounds(index);
-				UnsafeUtility.WriteArrayElement(state->Datas, index, value);
+				UnsafeUtility.WriteArrayElement(state->Values, index, value);
 			}
 		}
 
@@ -768,7 +813,7 @@ namespace JacksonDunstan.NativeCollections
 			// Insert at the end
 			int insertIndex = state->Length;
 			RequireIndexInBounds(insertIndex);
-			UnsafeUtility.WriteArrayElement(state->Datas, insertIndex, value);
+			UnsafeUtility.WriteArrayElement(state->Values, insertIndex, value);
 			state->NextIndexes[insertIndex] = -1;
 			state->PrevIndexes[insertIndex] = state->TailIndex;
 
@@ -918,7 +963,7 @@ namespace JacksonDunstan.NativeCollections
 			// Insert at the end
 			int insertIndex = state->Length;
 			RequireIndexInBounds(insertIndex);
-			UnsafeUtility.WriteArrayElement(state->Datas, insertIndex, value);
+			UnsafeUtility.WriteArrayElement(state->Values, insertIndex, value);
 			state->NextIndexes[insertIndex] = state->HeadIndex;
 			state->PrevIndexes[insertIndex] = -1;
 
@@ -1075,11 +1120,11 @@ namespace JacksonDunstan.NativeCollections
 			}
 
 			// By adding C after B, we're changing from this:
-			//   datas:       [  A, B,  D ]
+			//   values:      [  A, B,  D ]
 			//   nextIndexes: [  1, 2, -1 ]
 			//   prevIndexes: [ -1, 0,  1 ]
 			// To this:
-			//   datas:       [  A, B,  D, C ]
+			//   values:      [  A, B,  D, C ]
 			//   nextIndexes: [  1, 3, -1, 2 ]
 			//   prevIndexes: [ -1, 0,  3, 1 ]
 			// Terminology:
@@ -1088,10 +1133,10 @@ namespace JacksonDunstan.NativeCollections
 			//   "prev node": node previously prev of the insert node (D)
 			//   "end node": node just after the end of the nodes array (D + 1)
 
-			// Set the data to insert at the end node
+			// Set the value to insert at the end node
 			int endIndex = state->Length;
 			RequireIndexInBounds(endIndex);
-			UnsafeUtility.WriteArrayElement(state->Datas, endIndex, value);
+			UnsafeUtility.WriteArrayElement(state->Values, endIndex, value);
 
 			// Point the end node's next to the next node
 			RequireIndexInBounds(enumerator.Index);
@@ -1270,11 +1315,11 @@ namespace JacksonDunstan.NativeCollections
 			}
 
 			// By adding B before C, we're changing from this:
-			//   datas:       [  A, C,  D ]
+			//   values:      [  A, C,  D ]
 			//   nextIndexes: [  1, 2, -1 ]
 			//   prevIndexes: [ -1, 0,  1 ]
 			// To this:
-			//   datas:       [  A, C,  D, B ]
+			//   values:      [  A, C,  D, B ]
 			//   nextIndexes: [  3, 2, -1, 1 ]
 			//   prevIndexes: [ -1, 3,  1, 0 ]
 			// Terminology:
@@ -1283,10 +1328,10 @@ namespace JacksonDunstan.NativeCollections
 			//   "prev node": node previously prev of the insert node (D)
 			//   "end node": node just after the end of the nodes array (D + 1)
 
-			// Set the data to insert at the end node
+			// Set the value to insert at the end node
 			int endIndex = state->Length;
 			RequireIndexInBounds(endIndex);
-			UnsafeUtility.WriteArrayElement(state->Datas, endIndex, value);
+			UnsafeUtility.WriteArrayElement(state->Values, endIndex, value);
 
 			// Point the end node's next to the insert node
 			RequireIndexInBounds(enumerator.Index);
@@ -1525,10 +1570,10 @@ namespace JacksonDunstan.NativeCollections
 					int lastNextIndex = state->NextIndexes[lastIndex];
 					int lastPrevIndex = state->PrevIndexes[lastIndex];
 					UnsafeUtility.WriteArrayElement(
-						state->Datas,
+						state->Values,
 						enumerator.Index,
 						UnsafeUtility.ReadArrayElement<T>(
-							state->Datas,
+							state->Values,
 							lastIndex));
 					state->NextIndexes[enumerator.Index] = lastNextIndex;
 					state->PrevIndexes[enumerator.Index] = lastPrevIndex;
@@ -1601,7 +1646,7 @@ namespace JacksonDunstan.NativeCollections
 			RequireWriteAccess();
 			RequireFullListSafetyCheckBounds();
 
-			// Swap the data for the head with the data for the first element,
+			// Swap the value for the head with the value for the first element,
 			// then the the node after the head that to the second element,
 			// until the tail is reached
 			for (int curIndex = state->HeadIndex, startIndex = 0;
@@ -1612,26 +1657,26 @@ namespace JacksonDunstan.NativeCollections
 				// is already in order.
 				if (curIndex > startIndex)
 				{
-					T startData = UnsafeUtility.ReadArrayElement<T>(
-						state->Datas,
+					T startValue = UnsafeUtility.ReadArrayElement<T>(
+						state->Values,
 						startIndex);
 					UnsafeUtility.WriteArrayElement(
-						state->Datas,
+						state->Values,
 						startIndex,
 						UnsafeUtility.ReadArrayElement<T>(
-							state->Datas,
+							state->Values,
 							curIndex));
 					UnsafeUtility.WriteArrayElement(
-						state->Datas,
+						state->Values,
 						curIndex,
-						startData);
+						startValue);
 				}
 			}
 
 			int endIndex = state->Length - 1;
 
 			// Set all the next pointers to point to the next index now that
-			// the datas are sequential. The last one points to null.
+			// the values are sequential. The last one points to null.
 			for (int i = 0; i <= endIndex; ++i)
 			{
 				state->NextIndexes[i] = i + 1;
@@ -1639,7 +1684,7 @@ namespace JacksonDunstan.NativeCollections
 			state->NextIndexes[endIndex] = -1;
 
 			// Set all the prev pointers to point to the prev index now that
-			// the datas are sequential
+			// the values are sequential
 			for (int i = 0; i <= endIndex; ++i)
 			{
 				state->PrevIndexes[i] = i - 1;
@@ -1690,7 +1735,7 @@ namespace JacksonDunstan.NativeCollections
 				i = state->NextIndexes[i], arrIndex++)
 			{
 				array[arrIndex] = UnsafeUtility.ReadArrayElement<T>(
-					state->Datas,
+					state->Values,
 					i);
 			}
 
@@ -1734,7 +1779,7 @@ namespace JacksonDunstan.NativeCollections
 				i = state->PrevIndexes[i], arrIndex++)
 			{
 				array[arrIndex] = UnsafeUtility.ReadArrayElement<T>(
-					state->Datas,
+					state->Values,
 					i);
 			}
 
@@ -1772,13 +1817,13 @@ namespace JacksonDunstan.NativeCollections
 			RequireValidState();
 			RequireReadAccess();
 
-			// Copy the nodes' datas to the array
+			// Copy the nodes' values to the array
 			while (length > 0)
 			{
-				// Copy the node's data
+				// Copy the node's value
 				RequireIndexInBounds(srcEnumerator.Index);
 				array[destIndex] = UnsafeUtility.ReadArrayElement<T>(
-					state->Datas,
+					state->Values,
 					srcEnumerator.Index);
 
 				// Go to the next node
@@ -1822,8 +1867,8 @@ namespace JacksonDunstan.NativeCollections
 #endif
 
 				// Free the state's contents
-				UnsafeUtility.Free(state->Datas, state->Allocator);
-				state->Datas = null;
+				UnsafeUtility.Free(state->Values, state->Allocator);
+				state->Values = null;
 				UnsafeUtility.Free(state->NextIndexes, state->Allocator);
 				state->NextIndexes = null;
 				UnsafeUtility.Free(state->PrevIndexes, state->Allocator);
@@ -1870,7 +1915,7 @@ namespace JacksonDunstan.NativeCollections
 			RequireReadAccess();
 			RequireWriteAccess();
 
-			// Copy the list's node datas at the end. Copying with stride is
+			// Copy the list's node values at the end. Copying with stride is
 			// the same way NativeSlice<T> copies.
 			int endIndex = state->Length;
 			RequireRangeInBounds(
@@ -1878,9 +1923,9 @@ namespace JacksonDunstan.NativeCollections
 				endIndex + list.Length - 1);
 			int sizeofT = UnsafeUtility.SizeOf<T>();
 			UnsafeUtility.MemCpyStride(
-				(byte*)state->Datas + sizeofT * endIndex,
+				(byte*)state->Values + sizeofT * endIndex,
 				sizeofT,
-				list.state->Datas,
+				list.state->Values,
 				sizeofT,
 				sizeofT,
 				list.state->Length);
@@ -1919,21 +1964,21 @@ namespace JacksonDunstan.NativeCollections
 			RequireWriteAccess();
 			RequireFullListSafetyCheckBounds();
 
-			// Resize datas
+			// Resize values
 			int sizeofT = UnsafeUtility.SizeOf<T>();
-			void* newDatas = UnsafeUtility.Malloc(
+			void* newvalues = UnsafeUtility.Malloc(
 				newCapacity * sizeofT,
 				UnsafeUtility.AlignOf<T>(),
 				state->Allocator);
 			UnsafeUtility.MemCpyStride(
-				newDatas,
+				newvalues,
 				sizeofT,
-				state->Datas,
+				state->Values,
 				sizeofT,
 				sizeofT,
 				state->Length);
-			UnsafeUtility.Free(state->Datas, state->Allocator);
-			state->Datas = newDatas;
+			UnsafeUtility.Free(state->Values, state->Allocator);
+			state->Values = newvalues;
 
 			// Resize nextIndexes
 			int* newNextIndexes = (int*)UnsafeUtility.Malloc(
