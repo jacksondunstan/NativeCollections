@@ -6,6 +6,7 @@
 
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using Unity.Collections;
 using Unity.Jobs;
@@ -657,7 +658,33 @@ namespace JacksonDunstan.NativeCollections.Tests
 				list.PushBack(30);
 				list.PushBack(40);
 
-				Assert.That(list, Is.EqualTo(new [] { 10, 20, 30, 40 }));
+				int[] expected = new [] { 10, 20, 30, 40 };
+				int index = 0;
+				foreach (int val in list)
+				{
+					Assert.That(val, Is.EqualTo(expected[index]));
+					index++;
+				}
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void LinqIsUsableWithNativeLinkedList()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				IEnumerable<int> query = from val in list
+					where val > 10 && val < 40
+					select val * 100;
+
+				Assert.That(query, Is.EqualTo(new [] { 2000, 3000 }));
 
 				AssertGeneralInvariants(list);
 			}
@@ -1105,7 +1132,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 				NativeLinkedList<int>.Enumerator a = list.Head;
 				NativeLinkedList<int>.Enumerator b = list.Head;
 
-				Assert.That(a.Equals(b), Is.True);
+				Assert.That(a.Equals((object)b), Is.True);
 
 				AssertGeneralInvariants(list);
 			}
@@ -1124,8 +1151,8 @@ namespace JacksonDunstan.NativeCollections.Tests
 				NativeLinkedList<int>.Enumerator e = list.Head;
 				NativeLinkedList<int>.Enumerator invalid = NativeLinkedList<int>.Enumerator.MakeInvalid();
 
-				Assert.That(e.Equals(invalid), Is.False);
-				Assert.That(invalid.Equals(e), Is.False);
+				Assert.That(e.Equals((object)invalid), Is.False);
+				Assert.That(invalid.Equals((object)e), Is.False);
 
 				AssertGeneralInvariants(list);
 			}
@@ -1144,7 +1171,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 				NativeLinkedList<int>.Enumerator a = list.Head;
 				NativeLinkedList<int>.Enumerator b = a.Next;
 
-				Assert.That(a.Equals(b), Is.False);
+				Assert.That(a.Equals((object)b), Is.False);
 
 				AssertGeneralInvariants(list);
 			}
@@ -1170,7 +1197,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					NativeLinkedList<int>.Enumerator a = listA.Head;
 					NativeLinkedList<int>.Enumerator b = listB.Head;
 
-					Assert.That(a.Equals(b), Is.False);
+					Assert.That(a.Equals((object)b), Is.False);
 
 					AssertGeneralInvariants(listA);
 					AssertGeneralInvariants(listB);
@@ -1193,6 +1220,92 @@ namespace JacksonDunstan.NativeCollections.Tests
 				Assert.That(a.Equals("not an enumerator"), Is.False);
 
 				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGenericEqualsReturnsTrueForSameNode()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator a = list.Head;
+				NativeLinkedList<int>.Enumerator b = list.Head;
+
+				Assert.That(a.Equals(b), Is.True);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGenericEqualsReturnsFalseWhenOneNodeIsInvalid()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				NativeLinkedList<int>.Enumerator invalid = NativeLinkedList<int>.Enumerator.MakeInvalid();
+
+				Assert.That(e.Equals(invalid), Is.False);
+				Assert.That(invalid.Equals(e), Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGenericEqualsReturnsFalseForDifferentNodes()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+
+				NativeLinkedList<int>.Enumerator a = list.Head;
+				NativeLinkedList<int>.Enumerator b = a.Next;
+
+				Assert.That(a.Equals(b), Is.False);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGenericEqualsReturnsFalseForDifferentLists()
+		{
+			using (NativeLinkedList<int> listA = CreateList(3))
+			{
+				listA.PushBack(10);
+				listA.PushBack(20);
+				listA.PushBack(30);
+				listA.PushBack(40);
+
+				using (NativeLinkedList<int> listB = CreateList(3))
+				{
+					listB.PushBack(10);
+					listB.PushBack(20);
+					listB.PushBack(30);
+					listB.PushBack(40);
+
+					NativeLinkedList<int>.Enumerator a = listA.Head;
+					NativeLinkedList<int>.Enumerator b = listB.Head;
+
+					Assert.That(a.Equals(b), Is.False);
+
+					AssertGeneralInvariants(listA);
+					AssertGeneralInvariants(listB);
+				}
 			}
 		}
 
@@ -1355,6 +1468,23 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
+		public void GetValueReturnsNodeValue()
+		{
+			using (NativeLinkedList<int> list = CreateList(3))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				NativeLinkedList<int>.Enumerator e = list.PushBack(30);
+				list.PushBack(40);
+				list.PushBack(50);
+
+				Assert.That(e.Value, Is.EqualTo(30));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
 		public void GetCurrentReturnsNodeValue()
 		{
 			using (NativeLinkedList<int> list = CreateList(3))
@@ -1389,7 +1519,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
         [Test]
-        public void SetCurrentSetsNodeValue()
+        public void SetValueSetsNodeValue()
         {
 			using (NativeLinkedList<int> list = CreateList(3))
             {
@@ -1399,9 +1529,9 @@ namespace JacksonDunstan.NativeCollections.Tests
                 list.PushBack(40);
                 list.PushBack(50);
                 
-				e.Current = 100;
+				e.Value = 100;
 
-				Assert.That(e.Current, Is.EqualTo(100));
+				Assert.That(e.Value, Is.EqualTo(100));
                 
                 AssertGeneralInvariants(list);
             }
@@ -1646,6 +1776,37 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Assert.That(array[1], Is.EqualTo(30));
 					Assert.That(array[2], Is.EqualTo(40));
 					Assert.That(array[3], Is.EqualTo(50));
+
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void CopyToNativeArrayReverseFillsGivenArrayWithReverseOrder()
+		{
+			using (NativeLinkedList<int> list = CreateList(5))
+			{
+				list.PushBack(10);
+				list.PushBack(20);
+				list.PushBack(30);
+				list.PushBack(40);
+				list.PushBack(50);
+
+				using (NativeArray<int> array = new NativeArray<int>(
+					4,
+					Allocator.Temp))
+				{
+					list.CopyToNativeArrayReverse(
+						array,
+						list.Tail.Prev.Prev,
+						1,
+						3);
+
+					Assert.That(array[0], Is.EqualTo(0));
+					Assert.That(array[1], Is.EqualTo(30));
+					Assert.That(array[2], Is.EqualTo(20));
+					Assert.That(array[3], Is.EqualTo(10));
 
 					AssertGeneralInvariants(list);
 				}

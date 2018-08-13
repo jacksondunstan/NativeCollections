@@ -97,6 +97,7 @@ namespace JacksonDunstan.NativeCollections
 			: IEnumerator<T>
 			, IEnumerator
 			, IDisposable
+			, IEquatable<Enumerator>
 		{
 			/// <summary>
 			/// Index of the node
@@ -157,6 +158,9 @@ namespace JacksonDunstan.NativeCollections
 
 			/// <summary>
 			/// Get an enumerator to the next node.
+			/// 
+			/// This operation requires read access to the node if the
+			/// enumerator is valid.
 			///
 			/// This operation is O(1).
 			/// </summary>
@@ -203,6 +207,9 @@ namespace JacksonDunstan.NativeCollections
 
 			/// <summary>
 			/// Get an enumerator to the previous node
+			/// 
+			/// This operation requires read access to the node if the
+			/// enumerator is valid.
 			///
 			/// This operation is O(1).
 			/// </summary>
@@ -254,6 +261,9 @@ namespace JacksonDunstan.NativeCollections
 			/// constructor and the list it enumerates has not been disposed and
 			/// has not invalidated this enumerator, move to the head node.
 			/// Otherwise, this function has no effect.
+			/// 
+			/// This operation requires read access to the node if the
+			/// enumerator is valid.
 			///
 			/// This operation is O(1).
 			/// </summary>
@@ -293,6 +303,9 @@ namespace JacksonDunstan.NativeCollections
 			/// constructor and the list it enumerates has not been disposed and
 			/// has not invalidated this enumerator, move to the tail node.
 			/// Otherwise, this function has no effect.
+			/// 
+			/// This operation requires read access to the node if the
+			/// enumerator is valid.
 			///
 			/// This operation is O(1).
 			/// </summary>
@@ -404,6 +417,27 @@ namespace JacksonDunstan.NativeCollections
 			/// This operation is O(1).
 			/// </summary>
 			/// 
+			/// <param name="e">
+			/// Enumerator to compare with
+			/// </param>
+			/// 
+			/// <returns>
+			/// If the given enumerator refers to the same node as this
+			/// enumerator and is of the same type and neither enumerator is
+			/// invalid.
+			/// </returns>
+			public bool Equals(Enumerator e)
+			{
+				return this == e;
+			}
+
+			/// <summary>
+			/// Check if this enumerator refer to the same node as another
+			/// enumerator.
+			/// 
+			/// This operation is O(1).
+			/// </summary>
+			/// 
 			/// <param name="obj">
 			/// Enumerator to compare with
 			/// </param>
@@ -451,15 +485,18 @@ namespace JacksonDunstan.NativeCollections
 			}
 
 			/// <summary>
-			/// Reset the enumerator to the head of the list or invalidate it if
-			/// the list is empty. This function has no effect if this
-			/// enumerator is already invalid.
+			/// Reset the enumerator to the head of the list if it wasn't
+			/// created using the default constructor or
+			/// <see cref="MakeInvalid"/>.
+			/// 
+			/// This operation requires read access to the list if the
+			/// enumerator is valid.
 			/// 
 			/// This operation is O(1).
 			/// </summary>
 			public void Reset()
 			{
-				if (IsValid)
+				if (m_List.m_State != null)
 				{
 					m_List.RequireValidState();
 					m_List.RequireReadAccess();
@@ -468,7 +505,10 @@ namespace JacksonDunstan.NativeCollections
 			}
 
 			/// <summary>
-			/// Get or set a node's value
+			/// Get or set a node's value.
+			/// 
+			/// This operation requires read access to the node for 'get' and
+			/// write access to the node for 'set'.
 			///
 			/// This operation is O(1).
 			/// </summary>
@@ -476,7 +516,7 @@ namespace JacksonDunstan.NativeCollections
 			/// <value>
 			/// The node's value
 			/// </value>
-			public T Current
+			public T Value
 			{
 				get
 				{
@@ -498,6 +538,33 @@ namespace JacksonDunstan.NativeCollections
 						m_List.m_State->m_Values,
 						m_Index,
 						value);
+				}
+			}
+
+			/// <summary>
+			/// Get or set a node's value. This is provided only for
+			/// compatibility with <see cref="IEnumerator{T}"/>. As such, there is
+			/// no 'set' for this property.
+			/// 
+			/// This operation requires read access to the node for 'get' and
+			/// write access to the node for 'set'.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <value>
+			/// The node's value
+			/// </value>
+			public T Current
+			{
+				get
+				{
+					m_List.RequireValidState();
+					m_List.RequireReadAccess();
+					m_List.RequireIndexInBounds(m_Index);
+					return UnsafeUtility.ReadArrayElement<T>(
+						m_List.m_State->m_Values,
+						m_Index);
 				}
 			}
 
@@ -803,7 +870,10 @@ namespace JacksonDunstan.NativeCollections
 			get
 			{
 				RequireValidState();
-				return new Enumerator(this, m_State->m_HeadIndex, m_State->m_Version);
+				return new Enumerator(
+					this,
+					m_State->m_HeadIndex,
+					m_State->m_Version);
 			}
 		}
 
@@ -1879,7 +1949,7 @@ namespace JacksonDunstan.NativeCollections
 		}
 
 		/// <summary>
-		/// Copy all nodes to a <see cref="NativeArray{T}"/>
+		/// Copy nodes to a <see cref="NativeArray{T}"/>.
 		///
 		/// This operation is O(N).
 		/// </summary>
@@ -1920,6 +1990,55 @@ namespace JacksonDunstan.NativeCollections
 
 				// Go to the next node
 				srcEnumerator.MoveNext();
+
+				// Count the copy
+				destIndex++;
+				length--;
+			}
+		}
+
+		/// <summary>
+		/// Copy nodes to a <see cref="NativeArray{T}"/> in reverse order.
+		///
+		/// This operation is O(N).
+		/// </summary>
+		///
+		/// <param name="array">
+		/// Array to copy nodes to
+		/// </param>
+		/// 
+		/// <param name="srcEnumerator">
+		/// Enumerator to the first node to copy. This function has no effect
+		/// if this is invalid. By default, the tail node is used.
+		/// </param>
+		/// 
+		/// <param name="destIndex">
+		/// Index to start copying into. By default, the first element is used.
+		/// </param>
+		/// 
+		/// <param name="length">
+		/// Number of nodes to copy. By default, the entire list is used.
+		/// </param>
+		public void CopyToNativeArrayReverse(
+			NativeArray<T> array,
+			Enumerator srcEnumerator = default(Enumerator),
+			int destIndex = 0,
+			int length = -1)
+		{
+			RequireValidState();
+			RequireReadAccess();
+
+			// Copy the nodes' values to the array
+			while (length > 0)
+			{
+				// Copy the node's value
+				RequireIndexInBounds(srcEnumerator.m_Index);
+				array[destIndex] = UnsafeUtility.ReadArrayElement<T>(
+					m_State->m_Values,
+					srcEnumerator.m_Index);
+
+				// Go to the prev node
+				srcEnumerator.MovePrev();
 
 				// Count the copy
 				destIndex++;
