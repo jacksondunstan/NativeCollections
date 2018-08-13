@@ -9,6 +9,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
@@ -622,11 +623,15 @@ namespace JacksonDunstan.NativeCollections
 				UnsafeUtility.AlignOf<int>(),
 				allocator);
 
+			// Store the allocator for future allocation and deallocation
+			// operations
 			m_State->m_Allocator = allocator;
 
 			// Initially empty with the given capacity
 			m_State->m_Length = 0;
 			m_State->m_Capacity = capacity;
+
+			// The list is empty so there is no head or tail
 			m_State->m_HeadIndex = -1;
 			m_State->m_TailIndex = -1;
 
@@ -638,6 +643,116 @@ namespace JacksonDunstan.NativeCollections
 			m_Length = 0;
 			m_MinIndex = 0;
 			m_MaxIndex = -1;
+			DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0);
+#endif
+		}
+
+		/// <summary>
+		/// Create the list with an initial capacity. It initially has no nodes.
+		///
+		/// This complexity of this operation is O(N) plus the allocator's
+		/// allocation complexity.
+		/// </summary>
+		/// 
+		/// <param name="capacity">
+		/// Initial capacity. This is capped at a minimum of four and the given
+		/// count.
+		/// </param>
+		/// 
+		/// <param name="length">
+		/// Number of nodes to add. This is capped at a minimum of zero.
+		/// </param>
+		/// 
+		/// <param name="allocator">
+		/// Allocator to allocate unmanaged memory with
+		/// </param>
+		public NativeLinkedList(int capacity, int length, Allocator allocator)
+		{
+			// Insist on a non-negative length
+			if (length < 0)
+			{
+				length = 0;
+			}
+
+			// Insist on a minimum capacity
+			int requiredCapacity = Math.Max(4, length);
+			if (capacity < requiredCapacity)
+			{
+				capacity = requiredCapacity;
+			}
+
+			// Allocate the state. It is freed in Dispose().
+			m_State = (NativeLinkedListState*)UnsafeUtility.Malloc(
+				sizeof(NativeLinkedListState),
+				UnsafeUtility.AlignOf<NativeLinkedListState>(),
+				allocator);
+			
+			// Create the backing arrays.
+			int valuesSize = UnsafeUtility.SizeOf<T>() * capacity;
+			m_State->m_Values = UnsafeUtility.Malloc(
+				valuesSize,
+				UnsafeUtility.AlignOf<T>(),
+				allocator
+			);
+			m_State->m_NextIndexes = (int*)UnsafeUtility.Malloc(
+				sizeof(int) * capacity,
+				UnsafeUtility.AlignOf<int>(),
+				allocator);
+			m_State->m_PrevIndexes = (int*)UnsafeUtility.Malloc(
+				sizeof(int) * capacity,
+				UnsafeUtility.AlignOf<int>(),
+				allocator);
+
+			// If there are any nodes to initialize
+			int endIndex = length - 1;
+			if (length > 0)
+			{
+				// Clear the node values to their defaults
+				UnsafeUtility.MemClear(m_State->m_Values, valuesSize);
+
+				// Initialize next pointers to the next index and the last next
+				// pointer to an invalid index
+				for (int i = 0; i < endIndex; ++i)
+				{
+					m_State->m_NextIndexes[i] = i + 1;
+				}
+				m_State->m_NextIndexes[endIndex] = -1;
+
+				// Initialize prev pointers to the previous index and the first
+				// prev pointer to an invalid index
+				m_State->m_PrevIndexes[0] = -1;
+				for (int i = 1; i < length; ++i)
+				{
+					m_State->m_PrevIndexes[i] = i - 1;
+				}
+
+				// The first node is the head and the last node is the tail
+				m_State->m_HeadIndex = 0;
+				m_State->m_TailIndex = endIndex;
+			}
+			else
+			{
+				// The list is empty so there is no head or tail
+				m_State->m_HeadIndex = -1;
+				m_State->m_TailIndex = -1;
+			}
+
+			// Store the allocator for future allocation and deallocation
+			// operations
+			m_State->m_Allocator = allocator;
+
+			// Initially sized to the given count with the given capacity
+			m_State->m_Length = length;
+			m_State->m_Capacity = capacity;
+
+			// Version starts at one so that the default (0) is never used
+			m_State->m_Version = 1;
+
+			// Initialize safety ranges
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+			m_Length = length;
+			m_MinIndex = 0;
+			m_MaxIndex = endIndex;
 			DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0);
 #endif
 		}
@@ -2052,6 +2167,7 @@ namespace JacksonDunstan.NativeCollections
 		/// Index that must be in the safety check bounds
 		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		[BurstDiscard]
 		private void RequireIndexInBounds(int index)
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -2089,6 +2205,7 @@ namespace JacksonDunstan.NativeCollections
 		/// full list.
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		[BurstDiscard]
 		private void RequireFullListSafetyCheckBounds()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -2114,6 +2231,7 @@ namespace JacksonDunstan.NativeCollections
 		///   [0, state->Capacity]
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		[BurstDiscard]
 		private void RequireRangeInBounds(
 			int startIndex,
 			int endIndex)
@@ -2152,6 +2270,7 @@ namespace JacksonDunstan.NativeCollections
 		/// Throw an exception if the list isn't readable
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		[BurstDiscard]
 		private unsafe void RequireReadAccess()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -2163,6 +2282,7 @@ namespace JacksonDunstan.NativeCollections
 		/// Throw an exception if the list isn't writable
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		[BurstDiscard]
 		private unsafe void RequireWriteAccess()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -2174,6 +2294,7 @@ namespace JacksonDunstan.NativeCollections
 		/// Throw an exception if the state is null
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		[BurstDiscard]
 		private unsafe void RequireValidState()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS

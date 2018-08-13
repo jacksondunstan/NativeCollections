@@ -91,11 +91,40 @@ namespace JacksonDunstan.NativeCollections.Tests
         }
 
 		[Test]
-		public void ConstructorEnforcesMinimumCapacity()
+		public void EmptyConstructorEnforcesMinimumCapacity()
 		{
 			using (NativeLinkedList<int> list = CreateList(1))
 			{
 				Assert.That(list.Capacity, Is.EqualTo(4));
+			}
+		}
+
+		[Test]
+		public void DefaultValuesConstructorEnforcesMinimumCapacityAndLength()
+		{
+			using (NativeLinkedList<int> list = new NativeLinkedList<int>(
+				1,
+				-1,
+				Allocator.Temp))
+			{
+				Assert.That(list.Length, Is.EqualTo(0));
+				Assert.That(list.Capacity, Is.EqualTo(4));
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void DefaultValuesConstructorSetsAllValuesToDefault()
+		{
+			using (NativeLinkedList<int> list = new NativeLinkedList<int>(
+				6,
+				4,
+				Allocator.Temp))
+			{
+				Assert.That(list.Length, Is.EqualTo(4));
+				Assert.That(list.Capacity, Is.EqualTo(6));
+				Assert.That(list, Is.EqualTo(new [] { 0, 0, 0, 0 }));
+				AssertGeneralInvariants(list);
 			}
 		}
         
