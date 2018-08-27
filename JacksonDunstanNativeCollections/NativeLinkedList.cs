@@ -20,6 +20,7 @@ namespace JacksonDunstan.NativeCollections
 	/// of the struct via a pointer to unmanaged memory. This has no type
 	/// parameters, so it can be used by all list types.
 	/// </summary>
+	[StructLayout(LayoutKind.Sequential)]
 	internal unsafe struct NativeLinkedListState
 	{
 		/// <summary>
@@ -93,6 +94,7 @@ namespace JacksonDunstan.NativeCollections
 		/// <summary>
 		/// An enumerator for <see cref="NativeLinkedList{T}"/>
 		/// </summary>
+		[StructLayout(LayoutKind.Sequential)]
 		public unsafe struct Enumerator
 			: IEnumerator<T>
 			, IEnumerator
@@ -112,7 +114,7 @@ namespace JacksonDunstan.NativeCollections
 			/// <summary>
 			/// List to iterate
 			/// </summary>
-			internal readonly NativeLinkedList<T> m_List;
+			internal NativeLinkedList<T> m_List;
 
 			/// <summary>
 			/// Create the enumerator for a particular node
@@ -433,6 +435,66 @@ namespace JacksonDunstan.NativeCollections
 			}
 
 			/// <summary>
+			/// Get the distance between this iterator and a given iterator that
+			/// is further towards the tail.
+			/// 
+			/// This operation requires read access in general and access to all
+			/// nodes between the node this enumerator refers to and the given
+			/// enumerator, inclusive, if this enumerator is valid and the given
+			/// enumerator is valid for the same list as this enumerator.
+			///
+			/// This operation is O(N) where N is the length of the list.
+			/// </summary>
+			/// 
+			/// <param name="other">
+			/// Enumerator to get the distance to. Must be valid for the same
+			/// list this enumerator is for.
+			/// </param>
+			/// 
+			/// <returns>
+			/// The number of nodes between this enumerator and the given
+			/// enumerator if both are valid for the same list and the given
+			/// enumerator is either the same enumerator as this enumerator or
+			/// is toward the tail compared to this enumerator. Otherwise, a
+			/// negative value.
+			/// </returns>
+			public int GetDistance(Enumerator other)
+			{
+				m_List.RequireReadAccess();
+
+				// Can't compare invalid enumerators or enumerators for
+				// different lists
+				if (!IsValid || !other.IsValidFor(m_List))
+				{
+					return -1;
+				}
+
+				// Keep moving next to find the given enumerator
+				int distance = 0;
+				int index = m_Index;
+				do
+				{
+					// Reached the tail
+					if (index < 0)
+					{
+						return -1;
+					}
+
+					// Reached the enumerator to find
+					if (index == other.m_Index)
+					{
+						return distance;
+					}
+
+					// Move next
+					m_List.RequireIndexInSafetyRange(index);
+					index = m_List.m_State->m_NextIndexes[index];
+					distance++;
+				}
+				while (true);
+			}
+
+			/// <summary>
 			/// Check if an enumerator is valid
 			/// 
 			/// This operation requires read access unless the enumerator was
@@ -516,7 +578,7 @@ namespace JacksonDunstan.NativeCollections
 			public static bool operator ==(Enumerator a, Enumerator b)
 			{
 				// Enumerators without a valid list can't be equal
-				if (a.m_List.m_State == null ||  b.m_List.m_State == null)
+				if (a.m_List.m_State == null || b.m_List.m_State == null)
 				{
 					return false;
 				}
@@ -639,6 +701,57 @@ namespace JacksonDunstan.NativeCollections
 #pragma warning disable RECS0025
 				return m_Index;
 #pragma warning restore RECS0025
+			}
+
+			/// <summary>
+			/// Set the ParallelFor safety check ranges of the list this
+			/// enumerator is for. This is used for automated testing purposes
+			/// only.
+			/// </summary>
+			/// 
+			/// <param name="minIndex">
+			/// The minimum index that can safely be accessed. This is zero
+			/// outside of a job and in a regular, non-ParallelFor job but set
+			/// higher by ParallelFor jobs.
+			/// </param>
+			/// 
+			/// <param name="maxIndex">
+			/// The maximum index that can safely be accessed. This is equal to
+			/// (m_Length-1) outside of a job and in a regular, non-ParallelFor
+			/// job but set lower by ParallelFor jobs.
+			/// </param>
+			[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+			[BurstDiscard]
+			public void TestUseOnlySetParallelForSafetyCheckRange(
+				int minIndex,
+				int maxIndex)
+			{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				m_List.m_MinIndex = minIndex;
+				m_List.m_MaxIndex = maxIndex;
+#endif
+			}
+
+			/// <summary>
+			/// Set whether both read and write access should be allowed for the
+			/// enumerator's list. This is used for automated testing purposes
+			/// only.
+			/// </summary>
+			/// 
+			/// <param name="allowReadOrWriteAccess">
+			/// If both read and write access should be allowed for the
+			/// enumerator's list
+			/// </param>
+			[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+			[BurstDiscard]
+			public void TestUseOnlySetAllowReadAndWriteAccess(
+				bool allowReadOrWriteAccess)
+			{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				AtomicSafetyHandle.SetAllowReadOrWriteAccess(
+					m_List.m_Safety,
+					allowReadOrWriteAccess);
+#endif
 			}
 
 			/// <summary>
@@ -773,7 +886,7 @@ namespace JacksonDunstan.NativeCollections
 		// They must have these exact types, names, and order
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 		/// <summary>
-		/// Length of the array. Equal to the number of nodes currently stored.
+		/// Length of the list. Equal to the number of nodes currently stored.
 		/// This is set by ParallelFor jobs due to specifying
 		/// [NativeContainerSupportsMinMaxWriteRestriction].
 		/// </summary>
@@ -829,6 +942,8 @@ namespace JacksonDunstan.NativeCollections
 		/// </param>
 		public NativeLinkedList(int capacity, Allocator allocator)
 		{
+			RequireBlittable();
+
 			// Insist on a minimum capacity
 			if (capacity < 4)
 			{
@@ -903,6 +1018,8 @@ namespace JacksonDunstan.NativeCollections
 		/// </param>
 		public NativeLinkedList(int capacity, int length, Allocator allocator)
 		{
+			RequireBlittable();
+
 			// Insist on a non-negative length
 			if (length < 0)
 			{
@@ -921,7 +1038,7 @@ namespace JacksonDunstan.NativeCollections
 				sizeof(NativeLinkedListState),
 				UnsafeUtility.AlignOf<NativeLinkedListState>(),
 				allocator);
-			
+
 			// Create the backing arrays.
 			int valuesSize = UnsafeUtility.SizeOf<T>() * capacity;
 			m_State->m_Values = UnsafeUtility.Malloc(
@@ -1147,6 +1264,36 @@ namespace JacksonDunstan.NativeCollections
 		}
 
 		/// <summary>
+		/// Get an enumerator for the node at a given index.
+		/// 
+		/// This operation requires read access.
+		/// 
+		/// This operation is O(1).
+		/// </summary>
+		/// 
+		/// <param name="index">
+		/// Index of the node to get an enumerator for. If negative or greater
+		/// than or equal to <see cref="Length"/>, the enumerator will be
+		/// invalid.
+		/// </param>
+		/// 
+		/// <returns>
+		/// The enumerator at the given index. Note that this index is not the
+		/// number of next pointers to follow from the head of the list but
+		/// instead the index into the underlying node array. Do not use this
+		/// after modifying the list until calling
+		/// <see cref="SortNodeMemoryAddresses"/>. If the given index is
+		/// negative or greater than or equal to <see cref="Length"/>, the
+		/// enumerator will be invalid.
+		/// </returns>
+		public Enumerator GetEnumeratorAtIndex(int index)
+		{
+			RequireReadAccess();
+
+			return new Enumerator(this, index, m_State->m_Version);
+		}
+
+		/// <summary>
 		/// Index into the list as if it were an array. Do not use this after
 		/// modifying the list until calling
 		/// <see cref="SortNodeMemoryAddresses"/>.
@@ -1184,36 +1331,6 @@ namespace JacksonDunstan.NativeCollections
 					index,
 					value);
 			}
-		}
-
-		/// <summary>
-		/// Get an enumerator for the node at a given index.
-		/// 
-		/// This operation requires read access.
-		/// 
-		/// This operation is O(1).
-		/// </summary>
-		/// 
-		/// <param name="index">
-		/// Index of the node to get an enumerator for. If negative or greater
-		/// than or equal to <see cref="Length"/>, the enumerator will be
-		/// invalid.
-		/// </param>
-		/// 
-		/// <returns>
-		/// The enumerator at the given index. Note that this index is not the
-		/// number of next pointers to follow from the head of the list but
-		/// instead the index into the underlying node array. Do not use this
-		/// after modifying the list until calling
-		/// <see cref="SortNodeMemoryAddresses"/>. If the given index is
-		/// negative or greater than or equal to <see cref="Length"/>, the
-		/// enumerator will be invalid.
-		/// </returns>
-		public Enumerator GetEnumeratorAtIndex(int index)
-		{
-			RequireReadAccess();
-
-			return new Enumerator(this, index, m_State->m_Version);
 		}
 
 		/// <summary>
@@ -1359,8 +1476,7 @@ namespace JacksonDunstan.NativeCollections
 		/// </param>
 		/// 
 		/// <param name="list">
-		/// List whose nodes to insert. Its <see cref="IsCreated"/> must return
-		/// true.
+		/// List whose nodes to insert. Must be readable.
 		/// </param>
 		/// 
 		/// <returns>
@@ -1474,8 +1590,7 @@ namespace JacksonDunstan.NativeCollections
 		/// </param>
 		/// 
 		/// <param name="array">
-		/// Array whose elements to insert. It must have been created with the
-		/// non-default constructor and not have been disposed.
+		/// Array whose elements to insert. It must be readable.
 		/// </param>
 		/// 
 		/// <returns>
@@ -1491,7 +1606,6 @@ namespace JacksonDunstan.NativeCollections
 			RequireReadAccess();
 			RequireWriteAccess();
 			RequireFullListSafetyCheckBounds();
-			RequireIsCreatedNativeArray(array);
 
 			// The enumerator is invalid for this list
 			int endIndex = m_State->m_Length;
@@ -1674,6 +1788,406 @@ namespace JacksonDunstan.NativeCollections
 			m_State->m_Length = endIndex + array.Length;
 
 			// The first inserted node
+			return new Enumerator(this, copiedHeadIndex, m_State->m_Version);
+		}
+
+		/// <summary>
+		/// Insert a range of nodes after the node referred to by the
+		/// given enumerator. This doesn't invalidate any enumerators.
+		/// 
+		/// This operation requires read and write access to the full list and
+		/// is therefore not suitable for use from a ParallelFor job. It also
+		/// requires read access to the node range of given list.
+		///
+		/// This operation is O(N) where N is the number of nodes to insert and
+		/// additional complexity of the allocator's deallocation and allocation
+		/// operations when the list doesn't have enough capacity to hold the
+		/// inserted nodes.
+		/// </summary>
+		/// 
+		/// <param name="enumerator">
+		/// Enumerator to the node to insert after. If invalid for this list,
+		/// this function has no effect.
+		/// </param>
+		/// 
+		/// <param name="start">
+		/// Enumerator to the first node to insert. Must refer to the same node
+		/// as the given end enumerator or be toward the head relative to it. If
+		/// invalid for this list, this function has no effect.
+		/// </param>
+		/// 
+		/// <param name="end">
+		/// Enumerator to the last node to insert. Must refer to the same node
+		/// as the given start enumerator or be toward the tail relative to it.
+		/// If invalid for this list, this function has no effect.
+		/// </param>
+		/// 
+		/// <returns>
+		/// An enumerator to the inserted start node or the given enumerator if
+		/// either given enumerator is invalid for this list.
+		/// </returns>
+		[WriteAccessRequired]
+		public Enumerator InsertAfter(
+			Enumerator enumerator,
+			Enumerator start,
+			Enumerator end)
+		{
+			RequireReadAccess();
+			RequireWriteAccess();
+			RequireFullListSafetyCheckBounds();
+
+			// Enumerators must be for this list
+			if (start.IsValidFor(this) && end.IsValidFor(this))
+			{
+				return enumerator;
+			}
+
+			// Compute how many nodes to insert
+			int numInsertNodes = start.GetDistance(end) + 1;
+
+			// The enumerator is invalid for this list
+			int endIndex = m_State->m_Length;
+			int copiedHeadIndex;
+			int copiedTailIndex;
+			if (!enumerator.IsValidFor(this))
+			{
+				// The list isn't empty so we don't know where to insert or
+				// there's nothing to insert
+				if (endIndex > 0 || numInsertNodes == 0)
+				{
+					return enumerator;
+				}
+
+				// Need room for all the nodes in the given list
+				EnsureCapacity(numInsertNodes);
+
+				// Copy to the end
+				CopyToEnd(start, end, out copiedHeadIndex, out copiedTailIndex);
+
+				// The added nodes are now the head and tail
+				m_State->m_HeadIndex = copiedHeadIndex;
+				m_State->m_TailIndex = copiedTailIndex;
+
+				// Update safety ranges
+				SetSafetyRange(numInsertNodes);
+
+				// The inserted list's length is now the list's length
+				m_State->m_Length = numInsertNodes;
+
+				// The first inserted node
+				return new Enumerator(
+					this,
+					copiedHeadIndex,
+					m_State->m_Version);
+			}
+
+			// Need room for all the nodes in the given list
+			EnsureCapacity(numInsertNodes);
+
+			// Insert the list at the end
+			CopyToEnd(start, end, out copiedHeadIndex, out copiedTailIndex);
+
+			// Point the inserted tail node's next to the next node
+			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
+			m_State->m_NextIndexes[copiedTailIndex] = insertNextIndex;
+
+			// Point the inserted head node's previous to the insert node
+			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
+			m_State->m_PrevIndexes[copiedHeadIndex] = enumerator.m_Index;
+
+			// Point the insert node's next to the inserted head node
+			m_State->m_NextIndexes[enumerator.m_Index] = copiedHeadIndex;
+
+			// Point the next node's prev to the inserted tail node
+			if (insertNextIndex >= 0)
+			{
+				m_State->m_PrevIndexes[insertNextIndex] = copiedTailIndex;
+			}
+			// The insert node was the tail, so update the tail index to
+			// point to the inserted tail node where we moved it
+			else
+			{
+				m_State->m_TailIndex = copiedTailIndex;
+			}
+
+			// Update safety ranges
+			SetSafetyRange(endIndex + numInsertNodes);
+
+			// Count the newly-added nodes
+			m_State->m_Length = endIndex + numInsertNodes;
+
+			// The first inserted node 
+			return new Enumerator(this, copiedHeadIndex, m_State->m_Version);
+		}
+
+		/// <summary>
+		/// Insert a range of the elements of a given array after the node
+		/// referred to by the given enumerator. This doesn't invalidate any
+		/// enumerators.
+		/// 
+		/// This operation requires read and write access to the full list and
+		/// is therefore not suitable for use from a ParallelFor job. It also
+		/// requires read access to the full given array.
+		///
+		/// This operation is O(N) where N is the given length and
+		/// additional complexity of the allocator's deallocation and allocation
+		/// operations when the list doesn't have enough capacity to hold the
+		/// inserted nodes.
+		/// </summary>
+		/// 
+		/// <param name="enumerator">
+		/// Enumerator to the node to insert after. If invalid for this list,
+		/// this function has no effect.
+		/// </param>
+		/// 
+		/// <param name="array">
+		/// Array whose elements to insert. It must be readable.
+		/// </param>
+		/// 
+		/// <param name="startIndex">
+		/// First index to insert. Must be in bounds.
+		/// </param>
+		/// 
+		/// <param name="length">
+		/// Number of elements to insert. The sum of this and the given start
+		/// index must be in bounds. Must be positive.
+		/// </param>
+		/// 
+		/// <returns>
+		/// An enumerator to the inserted head node or the given enumerator if
+		/// the given array is empty or an invalid enumerator if the given
+		/// enumerator is invalid.
+		/// </returns>
+		[WriteAccessRequired]
+		public Enumerator InsertAfter(
+			Enumerator enumerator,
+			NativeArray<T> array,
+			int startIndex,
+			int length)
+		{
+			RequireReadAccess();
+			RequireWriteAccess();
+			RequireFullListSafetyCheckBounds();
+			RequireValidRangeWithinArray(array, startIndex, length);
+
+			// The enumerator is invalid for this list
+			int endIndex = m_State->m_Length;
+			int copiedHeadIndex;
+			int copiedTailIndex;
+			if (!enumerator.IsValidFor(this))
+			{
+				// The list isn't empty so we don't know where to insert or the
+				// array is empty so there's nothing to insert
+				if (endIndex > 0 || length == 0)
+				{
+					return enumerator;
+				}
+
+				// Need room for all the nodes in the given array
+				EnsureCapacity(length);
+
+				// Copy to the end
+				CopyToEnd(
+					array,
+					startIndex,
+					length,
+					out copiedHeadIndex,
+					out copiedTailIndex);
+
+				// The added nodes are now the head and tail
+				m_State->m_HeadIndex = copiedHeadIndex;
+				m_State->m_TailIndex = copiedTailIndex;
+
+				// Update safety ranges
+				SetSafetyRange(length);
+
+				// The inserted array's length is now the list's length
+				m_State->m_Length = length;
+
+				// The first inserted node
+				return new Enumerator(
+					this,
+					copiedHeadIndex,
+					m_State->m_Version);
+			}
+
+			// Need room for all the nodes in the given list
+			EnsureCapacity(length);
+
+			// Insert the list at the end
+			CopyToEnd(
+				array,
+				startIndex,
+				length,
+				out copiedHeadIndex,
+				out copiedTailIndex);
+
+			// Point the inserted tail node's next to the next node
+			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
+			m_State->m_NextIndexes[copiedTailIndex] = insertNextIndex;
+
+			// Point the inserted head node's previous to the insert node
+			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
+			m_State->m_PrevIndexes[copiedHeadIndex] = enumerator.m_Index;
+
+			// Point the insert node's next to the inserted head node
+			m_State->m_NextIndexes[enumerator.m_Index] = copiedHeadIndex;
+
+			// Point the next node's prev to the inserted tail node
+			if (insertNextIndex >= 0)
+			{
+				m_State->m_PrevIndexes[insertNextIndex] = copiedTailIndex;
+			}
+			// The insert node was the tail, so update the tail index to
+			// point to the inserted tail node where we moved it
+			else
+			{
+				m_State->m_TailIndex = copiedTailIndex;
+			}
+
+			// Update safety ranges
+			SetSafetyRange(endIndex + length);
+
+			// Count the newly-added nodes
+			m_State->m_Length = endIndex + length;
+
+			// The first inserted node 
+			return new Enumerator(this, copiedHeadIndex, m_State->m_Version);
+		}
+
+		/// <summary>
+		/// Insert a range of the elements of a given array after the node
+		/// referred to by the given enumerator. This doesn't invalidate any
+		/// enumerators.
+		/// 
+		/// This operation requires read and write access to the full list and
+		/// is therefore not suitable for use from a ParallelFor job. It also
+		/// requires read access to the full given array.
+		///
+		/// This operation is O(N) where N is the given length and
+		/// additional complexity of the allocator's deallocation and allocation
+		/// operations when the list doesn't have enough capacity to hold the
+		/// inserted nodes.
+		/// </summary>
+		/// 
+		/// <param name="enumerator">
+		/// Enumerator to the node to insert after. If invalid for this list,
+		/// this function has no effect.
+		/// </param>
+		/// 
+		/// <param name="array">
+		/// Array whose elements to insert. It must be readable.
+		/// </param>
+		/// 
+		/// <param name="startIndex">
+		/// First index to insert. Must be in bounds.
+		/// </param>
+		/// 
+		/// <param name="length">
+		/// Number of elements to insert. The sum of this and the given start
+		/// index must be in bounds. Must be positive.
+		/// </param>
+		/// 
+		/// <returns>
+		/// An enumerator to the inserted head node or the given enumerator if
+		/// the given array is empty or an invalid enumerator if the given
+		/// enumerator is invalid.
+		/// </returns>
+		[WriteAccessRequired]
+		public Enumerator InsertAfter(
+			Enumerator enumerator,
+			T[] array,
+			int startIndex,
+			int length)
+		{
+			RequireReadAccess();
+			RequireWriteAccess();
+			RequireFullListSafetyCheckBounds();
+			RequireNonNullManagedArray(array);
+			RequireValidRangeWithinArray(array, startIndex, length);
+
+			// The enumerator is invalid for this list
+			int endIndex = m_State->m_Length;
+			int copiedHeadIndex;
+			int copiedTailIndex;
+			if (!enumerator.IsValidFor(this))
+			{
+				// The list isn't empty so we don't know where to insert or the
+				// array is empty so there's nothing to insert
+				if (endIndex > 0 || length == 0)
+				{
+					return enumerator;
+				}
+
+				// Need room for all the nodes in the given array
+				EnsureCapacity(length);
+
+				// Copy to the end
+				CopyToEnd(
+					array,
+					startIndex,
+					length,
+					out copiedHeadIndex,
+					out copiedTailIndex);
+
+				// The added nodes are now the head and tail
+				m_State->m_HeadIndex = copiedHeadIndex;
+				m_State->m_TailIndex = copiedTailIndex;
+
+				// Update safety ranges
+				SetSafetyRange(length);
+
+				// The inserted array's length is now the list's length
+				m_State->m_Length = length;
+
+				// The first inserted node
+				return new Enumerator(
+					this,
+					copiedHeadIndex,
+					m_State->m_Version);
+			}
+
+			// Need room for all the nodes in the given list
+			EnsureCapacity(length);
+
+			// Insert the list at the end
+			CopyToEnd(
+				array,
+				startIndex,
+				length,
+				out copiedHeadIndex,
+				out copiedTailIndex);
+
+			// Point the inserted tail node's next to the next node
+			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
+			m_State->m_NextIndexes[copiedTailIndex] = insertNextIndex;
+
+			// Point the inserted head node's previous to the insert node
+			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
+			m_State->m_PrevIndexes[copiedHeadIndex] = enumerator.m_Index;
+
+			// Point the insert node's next to the inserted head node
+			m_State->m_NextIndexes[enumerator.m_Index] = copiedHeadIndex;
+
+			// Point the next node's prev to the inserted tail node
+			if (insertNextIndex >= 0)
+			{
+				m_State->m_PrevIndexes[insertNextIndex] = copiedTailIndex;
+			}
+			// The insert node was the tail, so update the tail index to
+			// point to the inserted tail node where we moved it
+			else
+			{
+				m_State->m_TailIndex = copiedTailIndex;
+			}
+
+			// Update safety ranges
+			SetSafetyRange(endIndex + length);
+
+			// Count the newly-added nodes
+			m_State->m_Length = endIndex + length;
+
+			// The first inserted node 
 			return new Enumerator(this, copiedHeadIndex, m_State->m_Version);
 		}
 
@@ -1928,8 +2442,7 @@ namespace JacksonDunstan.NativeCollections
 		/// </param>
 		/// 
 		/// <param name="array">
-		/// List whose nodes to insert. It must have been created with the
-		/// non-default constructor and not have been disposed.
+		/// Array whose elements to insert. It must be readable.
 		/// </param>
 		/// 
 		/// <returns>
@@ -1945,7 +2458,6 @@ namespace JacksonDunstan.NativeCollections
 			RequireReadAccess();
 			RequireWriteAccess();
 			RequireFullListSafetyCheckBounds();
-			RequireIsCreatedNativeArray(array);
 
 			// The enumerator is invalid for this list
 			int endIndex = m_State->m_Length;
@@ -2132,6 +2644,407 @@ namespace JacksonDunstan.NativeCollections
 		}
 
 		/// <summary>
+		/// Insert a range of nodes before the node referred to by the
+		/// given enumerator. This doesn't invalidate any enumerators.
+		/// 
+		/// This operation requires read and write access to the full list and
+		/// is therefore not suitable for use from a ParallelFor job. It also
+		/// requires read access to the node range of given list.
+		///
+		/// This operation is O(N) where N is the number of nodes to insert and
+		/// additional complexity of the allocator's deallocation and allocation
+		/// operations when the list doesn't have enough capacity to hold the
+		/// inserted nodes.
+		/// </summary>
+		/// 
+		/// <param name="enumerator">
+		/// Enumerator to the node to insert after. If invalid for this list,
+		/// this function has no effect.
+		/// </param>
+		/// 
+		/// <param name="start">
+		/// Enumerator to the first node to insert. Must refer to the same node
+		/// as the given end enumerator or be toward the head relative to it. If
+		/// invalid for this list, this function has no effect.
+		/// </param>
+		/// 
+		/// <param name="end">
+		/// Enumerator to the last node to insert. Must refer to the same node
+		/// as the given start enumerator or be toward the tail relative to it.
+		/// If invalid for this list, this function has no effect.
+		/// </param>
+		/// 
+		/// <returns>
+		/// An enumerator to the inserted tail node or the given enumerator if
+		/// the given list is empty or an invalid enumerator if the given
+		/// enumerator is invalid.
+		/// </returns>
+		[WriteAccessRequired]
+		public Enumerator InsertBefore(
+			Enumerator enumerator,
+			Enumerator start,
+			Enumerator end)
+		{
+			RequireReadAccess();
+			RequireWriteAccess();
+			RequireFullListSafetyCheckBounds();
+
+			// Enumerators must be for this list
+			if (start.IsValidFor(this) && end.IsValidFor(this))
+			{
+				return enumerator;
+			}
+
+			// Compute how many nodes to insert
+			int numInsertNodes = start.GetDistance(end) + 1;
+
+			// The enumerator is invalid for this list
+			int endIndex = m_State->m_Length;
+			int copiedHeadIndex;
+			int copiedTailIndex;
+			if (!enumerator.IsValidFor(this))
+			{
+				// The list isn't empty so we don't know where to insert or the
+				// list is empty so there's nothing to insert
+				if (endIndex > 0 || numInsertNodes == 0)
+				{
+					return enumerator;
+				}
+
+				// Need room for all the nodes in the given list
+				EnsureCapacity(numInsertNodes);
+
+				// Copy to the end
+				CopyToEnd(start, end, out copiedHeadIndex, out copiedTailIndex);
+
+				// The added nodes are now the head and tail
+				m_State->m_HeadIndex = copiedHeadIndex;
+				m_State->m_TailIndex = copiedTailIndex;
+
+				// Update safety ranges
+				SetSafetyRange(numInsertNodes);
+
+				// The inserted list's length is now the list's length
+				m_State->m_Length = numInsertNodes;
+
+				// The first inserted node
+				return new Enumerator(
+					this,
+					copiedHeadIndex,
+					m_State->m_Version);
+			}
+
+			// Need room for all the nodes in the given list
+			EnsureCapacity(numInsertNodes);
+
+			// Insert the list at the end
+			CopyToEnd(start, end, out copiedHeadIndex, out copiedTailIndex);
+
+			// Point the inserted tail node's next to the insert node
+			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
+			m_State->m_NextIndexes[copiedTailIndex] = enumerator.m_Index;
+
+			// Point the inserted head node's previous to the prev node
+			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
+			m_State->m_PrevIndexes[copiedHeadIndex] = insertPrevIndex;
+
+			// Point the insert node's prev to the inserted tail node
+			m_State->m_PrevIndexes[enumerator.m_Index] = copiedTailIndex;
+
+			// Point the prev node's next to the inserted head node
+			if (insertPrevIndex >= 0)
+			{
+				m_State->m_NextIndexes[insertPrevIndex] = copiedHeadIndex;
+			}
+			// The insert node was the head, so update the head index to
+			// point to the inserted head node where we moved it
+			else
+			{
+				m_State->m_HeadIndex = copiedHeadIndex;
+			}
+
+			// Update safety ranges
+			SetSafetyRange(endIndex + numInsertNodes);
+
+			// Count the newly-added nodes
+			m_State->m_Length = endIndex + numInsertNodes;
+
+			// The inserted tail node 
+			return new Enumerator(this, copiedTailIndex, m_State->m_Version);
+		}
+
+		/// <summary>
+		/// Insert a range of the elements of a given array after the node
+		/// referred to by the given enumerator. This doesn't invalidate any
+		/// enumerators.
+		/// 
+		/// This operation requires read and write access to the full list and
+		/// is therefore not suitable for use from a ParallelFor job. It also
+		/// requires read access to the full given array.
+		///
+		/// This operation is O(N) where N is the given length and
+		/// additional complexity of the allocator's deallocation and allocation
+		/// operations when the list doesn't have enough capacity to hold the
+		/// inserted nodes.
+		/// </summary>
+		/// 
+		/// <param name="enumerator">
+		/// Enumerator to the node to insert after. If invalid for this list,
+		/// this function has no effect.
+		/// </param>
+		/// 
+		/// <param name="array">
+		/// Array whose elements to insert. It must be readable.
+		/// </param>
+		/// 
+		/// <param name="startIndex">
+		/// First index to insert. Must be in bounds.
+		/// </param>
+		/// 
+		/// <param name="length">
+		/// Number of elements to insert. The sum of this and the given start
+		/// index must be in bounds. Must be positive.
+		/// </param>
+		/// 
+		/// <returns>
+		/// An enumerator to the inserted tail node or the given enumerator if
+		/// the given array is empty or an invalid enumerator if the given
+		/// enumerator is invalid.
+		/// </returns>
+		[WriteAccessRequired]
+		public Enumerator InsertBefore(
+			Enumerator enumerator,
+			NativeArray<T> array,
+			int startIndex,
+			int length)
+		{
+			RequireReadAccess();
+			RequireWriteAccess();
+			RequireFullListSafetyCheckBounds();
+			RequireValidRangeWithinArray(array, startIndex, length);
+
+			// The enumerator is invalid for this list
+			int endIndex = m_State->m_Length;
+			int copiedHeadIndex;
+			int copiedTailIndex;
+			if (!enumerator.IsValidFor(this))
+			{
+				// The list isn't empty so we don't know where to insert or the
+				// array is empty so there's nothing to insert
+				if (endIndex > 0 || length == 0)
+				{
+					return enumerator;
+				}
+
+				// Need room for all the nodes in the given array
+				EnsureCapacity(length);
+
+				// Copy to the end
+				CopyToEnd(
+					array,
+					startIndex,
+					length,
+					out copiedHeadIndex,
+					out copiedTailIndex);
+
+				// The added nodes are now the head and tail
+				m_State->m_HeadIndex = copiedHeadIndex;
+				m_State->m_TailIndex = copiedTailIndex;
+
+				// Update safety ranges
+				SetSafetyRange(length);
+
+				// The inserted array's length is now the list's length
+				m_State->m_Length = length;
+
+				// The first inserted node
+				return new Enumerator(
+					this,
+					copiedHeadIndex,
+					m_State->m_Version);
+			}
+
+			// Need room for all the nodes in the given list
+			EnsureCapacity(length);
+
+			// Insert the list at the end
+			CopyToEnd(
+				array,
+				startIndex,
+				length,
+				out copiedHeadIndex,
+				out copiedTailIndex);
+
+			// Point the inserted tail node's next to the insert node
+			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
+			m_State->m_NextIndexes[copiedTailIndex] = enumerator.m_Index;
+
+			// Point the inserted head node's previous to the prev node
+			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
+			m_State->m_PrevIndexes[copiedHeadIndex] = insertPrevIndex;
+
+			// Point the insert node's prev to the inserted tail node
+			m_State->m_PrevIndexes[enumerator.m_Index] = copiedTailIndex;
+
+			// Point the prev node's next to the inserted head node
+			if (insertPrevIndex >= 0)
+			{
+				m_State->m_NextIndexes[insertPrevIndex] = copiedHeadIndex;
+			}
+			// The insert node was the head, so update the head index to
+			// point to the inserted head node where we moved it
+			else
+			{
+				m_State->m_HeadIndex = copiedHeadIndex;
+			}
+
+			// Update safety ranges
+			SetSafetyRange(endIndex + length);
+
+			// Count the newly-added nodes
+			m_State->m_Length = endIndex + length;
+
+			// The inserted tail node 
+			return new Enumerator(this, copiedTailIndex, m_State->m_Version);
+		}
+
+		/// <summary>
+		/// Insert a range of the elements of a given array after the node
+		/// referred to by the given enumerator. This doesn't invalidate any
+		/// enumerators.
+		/// 
+		/// This operation requires read and write access to the full list and
+		/// is therefore not suitable for use from a ParallelFor job. It also
+		/// requires read access to the full given array.
+		///
+		/// This operation is O(N) where N is the given length and
+		/// additional complexity of the allocator's deallocation and allocation
+		/// operations when the list doesn't have enough capacity to hold the
+		/// inserted nodes.
+		/// </summary>
+		/// 
+		/// <param name="enumerator">
+		/// Enumerator to the node to insert after. If invalid for this list,
+		/// this function has no effect.
+		/// </param>
+		/// 
+		/// <param name="array">
+		/// Array whose elements to insert. It must be readable.
+		/// </param>
+		/// 
+		/// <param name="startIndex">
+		/// First index to insert. Must be in bounds.
+		/// </param>
+		/// 
+		/// <param name="length">
+		/// Number of elements to insert. The sum of this and the given start
+		/// index must be in bounds. Must be positive.
+		/// </param>
+		/// 
+		/// <returns>
+		/// An enumerator to the inserted tail node or the given enumerator if
+		/// the given array is empty or an invalid enumerator if the given
+		/// enumerator is invalid.
+		/// </returns>
+		[WriteAccessRequired]
+		public Enumerator InsertBefore(
+			Enumerator enumerator,
+			T[] array,
+			int startIndex,
+			int length)
+		{
+			RequireReadAccess();
+			RequireWriteAccess();
+			RequireFullListSafetyCheckBounds();
+			RequireNonNullManagedArray(array);
+			RequireValidRangeWithinArray(array, startIndex, length);
+
+			// The enumerator is invalid for this list
+			int endIndex = m_State->m_Length;
+			int copiedHeadIndex;
+			int copiedTailIndex;
+			if (!enumerator.IsValidFor(this))
+			{
+				// The list isn't empty so we don't know where to insert or the
+				// array is empty so there's nothing to insert
+				if (endIndex > 0 || length == 0)
+				{
+					return enumerator;
+				}
+
+				// Need room for all the nodes in the given array
+				EnsureCapacity(length);
+
+				// Copy to the end
+				CopyToEnd(
+					array,
+					startIndex,
+					length,
+					out copiedHeadIndex,
+					out copiedTailIndex);
+
+				// The added nodes are now the head and tail
+				m_State->m_HeadIndex = copiedHeadIndex;
+				m_State->m_TailIndex = copiedTailIndex;
+
+				// Update safety ranges
+				SetSafetyRange(length);
+
+				// The inserted array's length is now the list's length
+				m_State->m_Length = length;
+
+				// The first inserted node
+				return new Enumerator(
+					this,
+					copiedHeadIndex,
+					m_State->m_Version);
+			}
+
+			// Need room for all the nodes in the given list
+			EnsureCapacity(length);
+
+			// Insert the list at the end
+			CopyToEnd(
+				array,
+				startIndex,
+				length,
+				out copiedHeadIndex,
+				out copiedTailIndex);
+
+			// Point the inserted tail node's next to the insert node
+			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
+			m_State->m_NextIndexes[copiedTailIndex] = enumerator.m_Index;
+
+			// Point the inserted head node's previous to the prev node
+			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
+			m_State->m_PrevIndexes[copiedHeadIndex] = insertPrevIndex;
+
+			// Point the insert node's prev to the inserted tail node
+			m_State->m_PrevIndexes[enumerator.m_Index] = copiedTailIndex;
+
+			// Point the prev node's next to the inserted head node
+			if (insertPrevIndex >= 0)
+			{
+				m_State->m_NextIndexes[insertPrevIndex] = copiedHeadIndex;
+			}
+			// The insert node was the head, so update the head index to
+			// point to the inserted head node where we moved it
+			else
+			{
+				m_State->m_HeadIndex = copiedHeadIndex;
+			}
+
+			// Update safety ranges
+			SetSafetyRange(endIndex + length);
+
+			// Count the newly-added nodes
+			m_State->m_Length = endIndex + length;
+
+			// The inserted tail node 
+			return new Enumerator(this, copiedTailIndex, m_State->m_Version);
+		}
+
+		/// <summary>
 		/// Remove a node. This invalidates all enumerators, including the given
 		/// enumerator, if the given enumerator is valid. Note that the node's
 		/// value is not cleared since it's blittable and therefore can't hold
@@ -2297,7 +3210,7 @@ namespace JacksonDunstan.NativeCollections
 		/// This operation is O(1).
 		/// </summary>
 		[WriteAccessRequired]
-		public void RemoveAll()
+		public void Clear()
 		{
 			RequireReadAccess();
 			RequireWriteAccess();
@@ -2374,8 +3287,8 @@ namespace JacksonDunstan.NativeCollections
 			// If the enumerators refer to the same node, don't swap because
 			// swapping will have no effect.
 			if (a.IsValidFor(this)
-			    && b.IsValidFor(this)
-			    && a.m_Index != b.m_Index)
+				&& b.IsValidFor(this)
+				&& a.m_Index != b.m_Index)
 			{
 				RequireIndexInSafetyRange(a.m_Index);
 				RequireIndexInSafetyRange(b.m_Index);
@@ -2577,6 +3490,7 @@ namespace JacksonDunstan.NativeCollections
 		{
 			RequireReadAccess();
 			RequireFullListSafetyCheckBounds();
+			RequireNonNullManagedArray(array);
 
 			// Traverse the list copying the nodes' values to the array
 			for (int srcIndex = m_State->m_HeadIndex, destIndex = 0;
@@ -2697,6 +3611,7 @@ namespace JacksonDunstan.NativeCollections
 		{
 			RequireReadAccess();
 			RequireFullListSafetyCheckBounds();
+			RequireNonNullManagedArray(array);
 
 			// Traverse the list copying the nodes' values to the array
 			for (int srcIndex = m_State->m_TailIndex, destIndex = 0;
@@ -2819,8 +3734,8 @@ namespace JacksonDunstan.NativeCollections
 		/// </summary>
 		///
 		/// <param name="array">
-		/// Array to copy nodes to. Its <see cref="IsCreated"/> must return true
-		/// and it must be at least as long as the list.
+		/// Array to copy nodes to. It must be writable and it must be at least
+		/// as long as the list.
 		/// </param>
 		public void ToNativeArrayFull(NativeArray<T> array)
 		{
@@ -2949,8 +3864,8 @@ namespace JacksonDunstan.NativeCollections
 		/// </summary>
 		///
 		/// <param name="array">
-		/// Array to copy nodes to. Its <see cref="IsCreated"/> must return true
-		/// and it must be at least as long as the list.
+		/// Array to copy nodes to. It must be writable and  and it must be at
+		/// least as long as the list.
 		/// </param>
 		public void ToNativeArrayFullReverse(NativeArray<T> array)
 		{
@@ -2969,7 +3884,8 @@ namespace JacksonDunstan.NativeCollections
 		}
 
 		/// <summary>
-		/// Check if the underlying unmanaged memory has ever been created
+		/// Check if the underlying unmanaged memory has been created and not
+		/// freed via a call to <see cref="Dispose"/>.
 		/// 
 		/// This operation has no access requirements.
 		///
@@ -3043,6 +3959,54 @@ namespace JacksonDunstan.NativeCollections
 		}
 
 		/// <summary>
+		/// Set the ParallelFor safety check ranges. This is used for automated
+		/// testing purposes only.
+		/// </summary>
+		/// 
+		/// <param name="minIndex">
+		/// The minimum index that can safely be accessed. This is zero outside
+		/// of a job and in a regular, non-ParallelFor job but set higher by
+		/// ParallelFor jobs.
+		/// </param>
+		/// 
+		/// <param name="maxIndex">
+		/// The maximum index that can safely be accessed. This is equal to
+		/// (m_Length-1) outside of a job and in a regular, non-ParallelFor job
+		/// but set lower by ParallelFor jobs.
+		/// </param>
+		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		[BurstDiscard]
+		public void TestUseOnlySetParallelForSafetyCheckRange(
+			int minIndex,
+			int maxIndex)
+		{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+			m_MinIndex = minIndex;
+			m_MaxIndex = maxIndex;
+#endif
+		}
+
+		/// <summary>
+		/// Set whether both read and write access should be allowed. This is
+		/// used for automated testing purposes only.
+		/// </summary>
+		/// 
+		/// <param name="allowReadOrWriteAccess">
+		/// If both read and write access should be allowed
+		/// </param>
+		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		[BurstDiscard]
+		public void TestUseOnlySetAllowReadAndWriteAccess(
+			bool allowReadOrWriteAccess)
+		{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+			AtomicSafetyHandle.SetAllowReadOrWriteAccess(
+				m_Safety,
+				allowReadOrWriteAccess);
+#endif
+		}
+
+		/// <summary>
 		/// Copy all the nodes of a list to the end of the arrays. The list must
 		/// already have sufficient capacity to hold all the nodes of the list
 		/// to copy.
@@ -3099,6 +4063,83 @@ namespace JacksonDunstan.NativeCollections
 			copiedTailIndex = endIndex + list.m_State->m_TailIndex;
 			m_State->m_NextIndexes[copiedTailIndex] = -1;
 			m_State->m_PrevIndexes[copiedHeadIndex] = -1;
+		}
+
+		/// <summary>
+		/// Copy a range of nodes of a list to the end of the arrays. The list
+		/// must already have sufficient capacity to hold all the nodes to copy.
+		/// 
+		/// This operation requires read and write access to the list and read
+		/// and write access to the portion of the list starting at
+		/// m_State->m_Length as well as the next nodes to copy. Read access to
+		/// the full given array is also required.
+		/// </summary>
+		/// 
+		/// <param name="start">
+		/// Enumerator to the first node to copy
+		/// </param>
+		/// 
+		/// <param name="end">
+		/// Enumerator to the last node to copy. Must be towards the tail
+		/// relative to the given start enumerator.
+		/// </param>
+		/// 
+		/// <param name="copiedHeadIndex">
+		/// Index that the given start node was copied to
+		/// </param>
+		/// 
+		/// <param name="copiedTailIndex">
+		/// Index that the given end node was copied to
+		/// </param>
+		private void CopyToEnd(
+			Enumerator start,
+			Enumerator end,
+			out int copiedHeadIndex,
+			out int copiedTailIndex)
+		{
+			// Copy the list's node values at the end
+			int endIndex = m_State->m_Length;
+			int srcIndex = start.m_Index;
+			int destIndex = endIndex;
+			do
+			{
+				// Copy the node value
+				UnsafeUtility.WriteArrayElement(
+					m_State->m_Values,
+					destIndex,
+					UnsafeUtility.ReadArrayElement<T>(
+						start.m_List.m_State->m_Values,
+						srcIndex));
+
+				// Stop if this was the last node to copy
+				if (srcIndex == end.m_Index)
+				{
+					break;
+				}
+
+				// Move to the next node to copy
+				srcIndex = start.m_List.m_State->m_NextIndexes[srcIndex];
+				destIndex++;
+			}
+			while (true);
+
+			// "Return" the copied head and tail indices
+			copiedHeadIndex = endIndex;
+			copiedTailIndex = destIndex;
+
+			// Initialize next indices to point to the next node
+			for (int i = copiedHeadIndex; i < copiedTailIndex; ++i)
+			{
+				m_State->m_NextIndexes[i] = i + 1;
+			}
+			m_State->m_NextIndexes[copiedTailIndex] = -1;
+
+			// Initialize prev indices to point to the previous node
+			m_State->m_PrevIndexes[copiedHeadIndex] = -1;
+			for (int i = copiedHeadIndex + 1; i <= copiedTailIndex; ++i)
+			{
+				m_State->m_PrevIndexes[i] = i - 1;
+			}
 		}
 
 		/// <summary>
@@ -3163,6 +4204,150 @@ namespace JacksonDunstan.NativeCollections
 		}
 
 		/// <summary>
+		/// Copy all the nodes of an array to the end of the arrays. The list
+		/// must already have sufficient capacity to hold all the nodes of the
+		/// array to copy.
+		/// 
+		/// This operation requires read and write access to the list and read
+		/// and write access to the portion of the list starting at
+		/// m_State->m_Length as well as the next list->m_State->m_Length -1
+		/// nodes. Read access to the full given array is also required.
+		/// </summary>
+		/// 
+		/// <param name="array">
+		/// Array to copy. Must not be empty.
+		/// </param>
+		/// 
+		/// <param name="startIndex">
+		/// First index to copy. Must be in bounds.
+		/// </param>
+		/// 
+		/// <param name="length">
+		/// Number of elements to copy. The sum of this and the given start
+		/// index must be in bounds. Must be positive.
+		/// </param>
+		/// 
+		/// <param name="copiedHeadIndex">
+		/// Index that the list's head node was copied to
+		/// </param>
+		/// 
+		/// <param name="copiedTailIndex">
+		/// Index that the list's tail node was copied to
+		/// </param>
+		private void CopyToEnd(
+			NativeArray<T> array,
+			int startIndex,
+			int length,
+			out int copiedHeadIndex,
+			out int copiedTailIndex)
+		{
+			// Compute the indices of the head and tail of the copied portion of
+			// the list
+			int endIndex = m_State->m_Length;
+			copiedHeadIndex = endIndex;
+			copiedTailIndex = endIndex + length - 1;
+
+			// Copy the array's elements to the end. Copying with stride is
+			// the same way NativeSlice<T> copies.
+			int sizeofT = UnsafeUtility.SizeOf<T>();
+			UnsafeUtility.MemCpyStride(
+				(byte*)m_State->m_Values + sizeofT * endIndex,
+				sizeofT,
+				(byte*)array.GetUnsafeReadOnlyPtr() + sizeofT * startIndex,
+				sizeofT,
+				sizeofT,
+				length);
+
+			// Initialize next pointers to the next index and the last next
+			// pointer to an invalid index
+			for (int i = copiedHeadIndex; i <= copiedTailIndex; ++i)
+			{
+				m_State->m_NextIndexes[i] = i + 1;
+			}
+			m_State->m_NextIndexes[copiedTailIndex] = -1;
+
+			// Initialize prev pointers to the previous index and the first
+			// prev pointer to an invalid index
+			m_State->m_PrevIndexes[copiedHeadIndex] = -1;
+			for (int i = copiedHeadIndex + 1; i <= copiedTailIndex; ++i)
+			{
+				m_State->m_PrevIndexes[i] = i - 1;
+			}
+		}
+
+		/// <summary>
+		/// Copy all the nodes of an array to the end of the arrays. The list
+		/// must already have sufficient capacity to hold all the nodes of the
+		/// array to copy.
+		/// 
+		/// This operation requires read and write access to the list and read
+		/// and write access to the portion of the list starting at
+		/// m_State->m_Length as well as the next list->m_State->m_Length -1
+		/// nodes. Read access to the full given array is also required.
+		/// </summary>
+		/// 
+		/// <param name="array">
+		/// Array to copy. Must not be empty.
+		/// </param>
+		/// 
+		/// <param name="startIndex">
+		/// First index to copy. Must be in bounds.
+		/// </param>
+		/// 
+		/// <param name="length">
+		/// Number of elements to copy. The sum of this and the given start
+		/// index must be in bounds. Must be positive.
+		/// </param>
+		/// 
+		/// <param name="copiedHeadIndex">
+		/// Index that the list's head node was copied to
+		/// </param>
+		/// 
+		/// <param name="copiedTailIndex">
+		/// Index that the list's tail node was copied to
+		/// </param>
+		private void CopyToEnd(
+			T[] array,
+			int startIndex,
+			int length,
+			out int copiedHeadIndex,
+			out int copiedTailIndex)
+		{
+			// Compute the indices of the head and tail of the copied portion of
+			// the list
+			int endIndex = m_State->m_Length;
+			copiedHeadIndex = endIndex;
+			copiedTailIndex = endIndex + length - 1;
+
+			// Copy the array's elements to the end
+			for (int destIndex = copiedHeadIndex, srcIndex = startIndex;
+				 destIndex <= copiedTailIndex;
+				 ++destIndex, ++srcIndex)
+			{
+				UnsafeUtility.WriteArrayElement(
+					m_State->m_Values,
+					destIndex,
+					array[srcIndex]);
+			}
+
+			// Initialize next pointers to the next index and the last next
+			// pointer to an invalid index
+			for (int i = copiedHeadIndex; i <= copiedTailIndex; ++i)
+			{
+				m_State->m_NextIndexes[i] = i + 1;
+			}
+			m_State->m_NextIndexes[copiedTailIndex] = -1;
+
+			// Initialize prev pointers to the previous index and the first
+			// prev pointer to an invalid index
+			m_State->m_PrevIndexes[copiedHeadIndex] = -1;
+			for (int i = copiedHeadIndex + 1; i <= copiedTailIndex; ++i)
+			{
+				m_State->m_PrevIndexes[i] = i - 1;
+			}
+		}
+
+		/// <summary>
 		/// Copy all the nodes of a list to the end of the arrays. The list must
 		/// already have sufficient capacity to hold all the nodes of the list
 		/// to copy.
@@ -3197,8 +4382,8 @@ namespace JacksonDunstan.NativeCollections
 
 			// Copy the array's elements to the end
 			for (int destIndex = copiedHeadIndex, srcIndex = 0;
-			     destIndex <= copiedTailIndex;
-			     ++destIndex, ++srcIndex)
+				 destIndex <= copiedTailIndex;
+				 ++destIndex, ++srcIndex)
 			{
 				UnsafeUtility.WriteArrayElement(
 					m_State->m_Values,
@@ -3243,7 +4428,7 @@ namespace JacksonDunstan.NativeCollections
 				int newCapacity = Math.Max(
 					m_State->m_Length * 2,
 					m_State->m_Length + numNewNodes);
-				
+
 				// Resize values
 				int sizeofT = UnsafeUtility.SizeOf<T>();
 				void* newvalues = UnsafeUtility.Malloc(
@@ -3291,6 +4476,21 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_PrevIndexes = newPrevIndexes;
 
 				m_State->m_Capacity = newCapacity;
+			}
+		}
+
+		/// <summary>
+		/// Throw an exception if the given type parameter is not blittable
+		/// </summary>
+		[BurstDiscard]
+		private static void RequireBlittable()
+		{
+			if (!UnsafeUtility.IsBlittable<T>())
+			{
+				throw new ArgumentException(
+					string.Format(
+						"{0} used in NativeLinkedList<{0}> must be blittable",
+						typeof(T)));
 			}
 		}
 
@@ -3380,7 +4580,7 @@ namespace JacksonDunstan.NativeCollections
 		private void RequireFullListSafetyCheckBounds()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-			if (m_MinIndex > 0 || m_MaxIndex >= m_Length)
+			if (m_MinIndex > 0 || m_MaxIndex < m_Length - 1)
 			{
 				throw new IndexOutOfRangeException(
 					"This operation cannot be performed from a ParallelFor " +
@@ -3439,23 +4639,91 @@ namespace JacksonDunstan.NativeCollections
 		}
 
 		/// <summary>
-		/// Throw an exception if the given array's
-		/// <see cref="NativeArray{T}.IsCreated"/> returns false.
+		/// Throw an exception if the given range is invalid (i.e. it has a
+		/// negative length) or isn't within the bounds of a given array
 		/// </summary>
 		/// 
 		/// <param name="array">
-		/// Array whose <see cref="NativeArray{T}.IsCreated"/> must return true.
+		/// Array the range must be within bounds of. Must be usable.
+		/// </param>
+		/// 
+		/// <param name="startIndex">
+		/// First index that must be in bounds
+		/// </param>
+		/// 
+		/// <param name="length">
+		/// Number of elements after the startIndex that must be in bounds
 		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		[BurstDiscard]
-		private void RequireIsCreatedNativeArray(NativeArray<T> array)
+		private void RequireValidRangeWithinArray(
+			NativeArray<T> array,
+			int startIndex,
+			int length)
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-			if (!array.IsCreated)
+			if (length < 0)
 			{
-				throw new InvalidOperationException(
-					"The given NativeArray's IsCreated returned false and " +
-					"therefore cannot be used for this operation.");
+				throw new IndexOutOfRangeException(
+					"Invalid range length (" + length + ") specified. Range " +
+					"lengths must be non-negative");
+			}
+			if (startIndex < 0)
+			{
+				throw new IndexOutOfRangeException(
+					"Invalid range start index (" + startIndex + ") " +
+					"specified. Range start indices must be non-negative.");
+			}
+			if (startIndex + length >= array.Length)
+			{
+				throw new IndexOutOfRangeException(
+					"Invalid range end index (" + (startIndex + length) + ") " +
+					"specified. Range start indices must be non-negative.");
+			}
+#endif
+		}
+
+		/// <summary>
+		/// Throw an exception if the given range is invalid (i.e. it has a
+		/// negative length) or isn't within the bounds of a given array
+		/// </summary>
+		/// 
+		/// <param name="array">
+		/// Array the range must be within bounds of. Must be usable.
+		/// </param>
+		/// 
+		/// <param name="startIndex">
+		/// First index that must be in bounds
+		/// </param>
+		/// 
+		/// <param name="length">
+		/// Number of elements after the startIndex that must be in bounds
+		/// </param>
+		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		[BurstDiscard]
+		private void RequireValidRangeWithinArray(
+			T[] array,
+			int startIndex,
+			int length)
+		{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+			if (length < 0)
+			{
+				throw new IndexOutOfRangeException(
+					"Invalid range length (" + length + ") specified. Range " +
+					"lengths must be non-negative");
+			}
+			if (startIndex < 0)
+			{
+				throw new IndexOutOfRangeException(
+					"Invalid range start index (" + startIndex + ") " +
+					"specified. Range start indices must be non-negative.");
+			}
+			if (startIndex + length >= array.Length)
+			{
+				throw new IndexOutOfRangeException(
+					"Invalid range end index (" + (startIndex + length) + ") " +
+					"specified. Range start indices must be non-negative.");
 			}
 #endif
 		}

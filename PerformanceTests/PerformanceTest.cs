@@ -127,10 +127,150 @@ public class PerformanceTest : MonoBehaviour
 		}
 	}
 
-	// Use this for initialization
+	// Insert jobs
+
+	[BurstCompile]
+	struct ArrayInsertJob : IJob
+	{
+		public NativeArray<int> Array;
+		public int NumElementsToAdd;
+
+		public void Execute()
+		{
+			for (int i = 0; i < NumElementsToAdd; ++i)
+			{
+				// If the array isn't empty
+				if (i > 0)
+				{
+					// Duplicate the last element
+					Array[i] = Array[i - 1];
+
+					// Shift all elements back one
+					for (int j = i - 2; j >= 0; --j)
+					{
+						Array[j + 1] = Array[j];
+					}
+				}
+
+				// Insert the element
+				Array[0] = 1;
+			}
+		}
+	}
+
+	[BurstCompile]
+	struct ListInsertJob : IJob
+	{
+		public NativeList<int> List;
+		public int NumElementsToAdd;
+
+		public void Execute()
+		{
+			for (int i = 0; i < NumElementsToAdd; ++i)
+			{
+				// If the list isn't empty
+				if (i > 0)
+				{
+					// Duplicate the last element to grow the list by one
+					List.Add(List[List.Length - 1]);
+
+					// Shift all elements back one
+					for (int j = i - 2; j >= 0; --j)
+					{
+						List[j + 1] = List[j];
+					}
+
+					// Insert the element
+					List[0] = 1;
+				}
+				// The list is empty. Just add the element.
+				else
+				{
+					List.Add(1);
+				}
+			}
+		}
+	}
+
+	[BurstCompile]
+	struct LinkedListInsertJob : IJob
+	{
+		public NativeLinkedList<int> LinkedList;
+		public int NumElementsToAdd;
+
+		public void Execute()
+		{
+			for (int i = 0; i < NumElementsToAdd; ++i)
+			{
+				// Insert the element
+				LinkedList.InsertBefore(LinkedList.Head, 1);
+			}
+		}
+	}
+
+	// Remove jobs
+
+	[BurstCompile]
+	struct ArrayRemoveJob : IJob
+	{
+		public NativeArray<int> Array;
+		public int NumElementsToRemove;
+
+		public void Execute()
+		{
+			for (int i = Array.Length; i > 0; --i)
+			{
+				// Shift all elements forward one starting at 'index'
+				for (int j = 0; j < NumElementsToRemove - 1; ++j)
+				{
+					Array[j] = Array[j + 1];
+				}
+			}
+		}
+	}
+
+	[BurstCompile]
+	struct ListRemoveJob : IJob
+	{
+		public NativeList<int> List;
+		public int NumElementsToRemove;
+
+		public void Execute()
+		{
+			for (int i = List.Length; i > 0; --i)
+			{
+				// Shift all elements forward one starting at 'index'
+				for (int j = 0; j < NumElementsToRemove - 1; ++j)
+				{
+					List[j] = List[j + 1];
+				}
+			}
+
+			// Fix the length
+			List.ResizeUninitialized(0);
+		}
+	}
+
+	[BurstCompile]
+	struct LinkedListRemoveJob : IJob
+	{
+		public NativeLinkedList<int> LinkedList;
+		public int NumElementsToRemove;
+
+		public void Execute()
+		{
+			for (int i = LinkedList.Length; i > 0; --i)
+			{
+				// Remove the head
+				LinkedList.Remove(LinkedList.Head);
+			}
+		}
+	}
+
+	// Run the test
 	void Start()
 	{
-		const int size = 10000000;
+		const int size = 10000;
 
 		// Create native collections
 		NativeArray<int> sum = new NativeArray<int>(1, Allocator.Temp);
@@ -184,6 +324,36 @@ public class PerformanceTest : MonoBehaviour
 			LinkedList = linkedList,
 			Sum = sum
 		};
+		ArrayInsertJob arrayInsertJob = new ArrayInsertJob
+		{
+			Array = array,
+			NumElementsToAdd = size
+		};
+		ListInsertJob listInsertJob = new ListInsertJob
+		{
+			List = list,
+			NumElementsToAdd = size
+		};
+		LinkedListInsertJob linkedListInsertJob = new LinkedListInsertJob
+		{
+			LinkedList = linkedList,
+			NumElementsToAdd = size
+		};
+		ArrayRemoveJob arrayRemoveJob = new ArrayRemoveJob
+		{
+			Array = array,
+			NumElementsToRemove = size
+		};
+		ListRemoveJob listRemoveJob = new ListRemoveJob
+		{
+			List = list,
+			NumElementsToRemove = size
+		};
+		LinkedListRemoveJob linkedListRemoveJob = new LinkedListRemoveJob
+		{
+			LinkedList = linkedList,
+			NumElementsToRemove = size
+		};
 
 		// Warm up the job system
 		arraySetJob.Run();
@@ -194,6 +364,14 @@ public class PerformanceTest : MonoBehaviour
 		linkedListIterateJob.Run();
 		arrayIterateJobParallelFor.Run(array.Length);
 		linkedListIterateJobParallelFor.Run(linkedList.Length);
+		list.Clear();
+		linkedList.Clear();
+		arrayInsertJob.Run();
+		listInsertJob.Run();
+		linkedListInsertJob.Run();
+		arrayRemoveJob.Run();
+		listRemoveJob.Run();
+		linkedListRemoveJob.Run();
 
 		// Run initialize jobs
 
@@ -202,18 +380,20 @@ public class PerformanceTest : MonoBehaviour
 		sw.Reset();
 		sw.Start();
 		arraySetJob.Run();
-		long arraySetTime = sw.ElapsedMilliseconds;
+		long arraySetTicks = sw.ElapsedTicks;
 
 		sw.Reset();
 		sw.Start();
 		listAddJob.Run();
-		long listAddTime = sw.ElapsedMilliseconds;
+		long listAddTicks = sw.ElapsedTicks;
 
 		sw.Reset();
 		sw.Start();
 		linkedListInsertAfterTailJob.Run();
-		long linkedListInsertAfterTailTime = sw.ElapsedMilliseconds;
+		long linkedListInsertAfterTailTicks = sw.ElapsedTicks;
 
+		Debug.Log(array.Length);
+		Debug.Log(list.Length);
 		Debug.Log(linkedList.Length);
 
 		// Run iterate jobs
@@ -222,31 +402,75 @@ public class PerformanceTest : MonoBehaviour
 		sw.Reset();
 		sw.Start();
 		arrayIterateJob.Run();
-		long arrayIterateTime = sw.ElapsedMilliseconds;
+		long arrayIterateTicks = sw.ElapsedTicks;
+		Debug.Log(sum[0]);
 
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
 		listIterateJob.Run();
-		long listIterateTime = sw.ElapsedMilliseconds;
+		long listIterateTicks = sw.ElapsedTicks;
+		Debug.Log(sum[0]);
 
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
 		linkedListIterateJob.Run();
-		long linkedListIterateTime = sw.ElapsedMilliseconds;
+		long linkedListIterateTicks = sw.ElapsedTicks;
+		Debug.Log(sum[0]);
 
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
 		arrayIterateJobParallelFor.Run(array.Length);
-		long arrayIterateParallelForTime = sw.ElapsedMilliseconds;
+		long arrayIterateParallelForTicks = sw.ElapsedTicks;
+		Debug.Log(sum[0]);
 
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
 		linkedListIterateJobParallelFor.Run(linkedList.Length);
-		long linkedListIterateParallelForTime = sw.ElapsedMilliseconds;
+		long linkedListIterateParallelForTicks = sw.ElapsedTicks;
+		Debug.Log(sum[0]);
+
+		// Clear native collections
+
+		list.Clear();
+		linkedList.Clear();
+
+		// Run insert jobs
+
+		sw.Reset();
+		sw.Start();
+		arrayInsertJob.Run();
+		long arrayInsertTicks = sw.ElapsedTicks;
+
+		sw.Reset();
+		sw.Start();
+		listInsertJob.Run();
+		long listInsertTicks = sw.ElapsedTicks;
+
+		sw.Reset();
+		sw.Start();
+		linkedListInsertJob.Run();
+		long linkedListInsertTicks = sw.ElapsedTicks;
+
+		// Run remove jobs
+
+		sw.Reset();
+		sw.Start();
+		arrayRemoveJob.Run();
+		long arrayRemoveTicks = sw.ElapsedTicks;
+
+		sw.Reset();
+		sw.Start();
+		listRemoveJob.Run();
+		long listRemoveTicks = sw.ElapsedTicks;
+
+		sw.Reset();
+		sw.Start();
+		linkedListRemoveJob.Run();
+		long linkedListRemoveTicks = sw.ElapsedTicks;
 
 		// Dispose native collections
 		sum.Dispose();
@@ -255,20 +479,13 @@ public class PerformanceTest : MonoBehaviour
 		linkedList.Dispose();
 
 		// Report results
-		Debug.LogFormat(
-			"Operation,Job Type,NativeArray Time,NativeList Time,NativeLinkedList Time\n" +
-			"Set,Single,{0},n/a,n/a\n" +
-			"Add/InsertAfter,Single,n/a,{1},{2}\n" +
-			"Iterate,Single,{0},{1},{2}\n" +
-			"Iterate,ParallelFor,{3},n/a,{4}",
-			arraySetTime,
-			listAddTime,
-			linkedListInsertAfterTailTime,
-			arrayIterateTime,
-			listIterateTime,
-			linkedListIterateTime,
-			arrayIterateParallelForTime,
-			linkedListIterateParallelForTime);
+		Debug.Log(
+			"Operation,Job Type,NativeArray,NativeList,NativeLinkedList\n" +
+			"Initialize,Single,"   + arraySetTicks                + ", "    + listAddTicks                      + "," + linkedListInsertAfterTailTicks    + "\n" +
+			"Iterate,Single,"      + arrayIterateTicks            + ","     + listIterateTicks                  + "," + linkedListIterateTicks            + "\n" +
+			"Iterate,ParallelFor," + arrayIterateParallelForTicks + ","     + "n/a"                             + "," + linkedListIterateParallelForTicks + "\n" +
+			"Insert,Single,"       + arrayInsertTicks             + ","     + listInsertTicks                   + "," + linkedListInsertTicks             + "\n" +
+			"Remove,Single,"       + arrayRemoveTicks             + ","     + listRemoveTicks                   + "," + linkedListRemoveTicks);
 
 		// Quit
 #if UNITY_EDITOR
@@ -276,11 +493,5 @@ public class PerformanceTest : MonoBehaviour
 #else
 		Application.Quit();
 #endif
-	}
-
-	// Update is called once per frame
-	void Update()
-	{
-
 	}
 }

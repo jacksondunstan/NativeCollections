@@ -4,6 +4,7 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,13 +20,18 @@ namespace JacksonDunstan.NativeCollections.Tests
     /// </summary>
     public class TestNativeLinkedList
     {
-		// Create a list of int with the given capacity
-		private static NativeLinkedList<int> CreateNativeLinkedList(int capacity)
+		struct NonBlittableStruct
+		{
+			public string String;
+		}
+
+		// Create an empty list of int with the given capacity
+		private static NativeLinkedList<int> CreateEmptyNativeLinkedList(int capacity)
 		{
 			return new NativeLinkedList<int>(capacity, Allocator.Temp);
 		}
 
-		// Create a list of int with the given capacity
+		// Create a list of int with the given node values
 		private static NativeLinkedList<int> CreateNativeLinkedList(params int[] values)
 		{
 			Assert.That(values, Is.Not.Null);
@@ -56,8 +62,13 @@ namespace JacksonDunstan.NativeCollections.Tests
         // Assert general invariants of the type
         private static void AssertGeneralInvariants(NativeLinkedList<int> list)
         {
-            // Length and capacity can't be negative
-            Assert.That(list.Length, Is.GreaterThanOrEqualTo(0));
+			// Reset this copy's safety check range
+			list.TestUseOnlySetParallelForSafetyCheckRange(
+				0,
+				list.Length - 1);
+
+			// Length and capacity can't be negative
+			Assert.That(list.Length, Is.GreaterThanOrEqualTo(0));
             Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(0));
             
             // Length <= Capacity
@@ -182,13 +193,55 @@ namespace JacksonDunstan.NativeCollections.Tests
 			Assert.That(list.ToArray(), Is.EqualTo(values));
 		}
 
+		private static void AssertRequiresReadOrWriteAccess(
+			NativeLinkedList<int> list,
+			Action action)
+		{
+			list.TestUseOnlySetAllowReadAndWriteAccess(false);
+			try
+			{
+				Assert.That(
+					() => action(),
+					Throws.TypeOf<InvalidOperationException>());
+			}
+			finally
+			{
+				list.TestUseOnlySetAllowReadAndWriteAccess(true);
+			}
+		}
+
+		private static void AssertRequiresReadOrWriteAccess(
+			NativeLinkedList<int>.Enumerator enumerator,
+			Action action)
+		{
+			enumerator.TestUseOnlySetAllowReadAndWriteAccess(false);
+			try
+			{
+				Assert.That(
+					() => action(),
+					Throws.TypeOf<InvalidOperationException>());
+			}
+			finally
+			{
+				enumerator.TestUseOnlySetAllowReadAndWriteAccess(true);
+			}
+		}
+
 		[Test]
 		public void EmptyConstructorEnforcesMinimumCapacity()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(1))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(1))
 			{
 				Assert.That(list.Capacity, Is.EqualTo(4));
 			}
+		}
+
+		[Test]
+		public void EmptyConstructorThrowsExceptionIfTypeParamIsNotBlittable()
+		{
+			Assert.That(
+				() => new NativeLinkedList<NonBlittableStruct>(4, Allocator.Temp),
+				Throws.TypeOf<ArgumentException>());
 		}
 
 		[Test]
@@ -219,11 +272,19 @@ namespace JacksonDunstan.NativeCollections.Tests
 				AssertGeneralInvariants(list);
 			}
 		}
-        
+
+		[Test]
+		public void DefaultValuesConstructorThrowsExceptionIfTypeParamIsNotBlittable()
+		{
+			Assert.That(
+				() => new NativeLinkedList<NonBlittableStruct>(6, 4, Allocator.Temp),
+				Throws.TypeOf<ArgumentException>());
+		}
+
 		[Test]
 		public void InsertAfterInsertsNodeAfterGivenEnumerator()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(5))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(5))
 			{
 				list.InsertAfter(list.Tail, 10);
 				NativeLinkedList<int>.Enumerator insert = list.InsertAfter(list.Tail, 20);
@@ -262,7 +323,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
 				NativeLinkedList<int>.Enumerator e = list.Head;
-				list.RemoveAll(); // invalidate the enumerator
+				list.Clear(); // invalidate the enumerator
 
 				NativeLinkedList<int>.Enumerator ret = list.InsertAfter(
 					e,
@@ -272,6 +333,35 @@ namespace JacksonDunstan.NativeCollections.Tests
 				Assert.That(list.Head.Current, Is.EqualTo(50));
 				Assert.That(list.Tail.Current, Is.EqualTo(50));
 				AssertListValues(list, 50);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertAfterWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+
+				Assert.That(
+					() => list.InsertAfter(list.Head, 20),
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void InsertAfterWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.InsertAfter(list.Head, 100));
 				AssertGeneralInvariants(list);
 			}
 		}
@@ -325,7 +415,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
 				NativeLinkedList<int>.Enumerator e = list.Head;
-				list.RemoveAll(); // invalidate the enumerator
+				list.Clear(); // invalidate the enumerator
 
 				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(40, 50, 60))
 				{
@@ -337,6 +427,170 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Assert.That(list.Head.Current, Is.EqualTo(40));
 					Assert.That(list.Tail.Current, Is.EqualTo(60));
 					AssertListValues(list, 40, 50, 60);
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListAfterWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				using (NativeLinkedList<int> insertList = CreateEmptyNativeLinkedList(1))
+				{
+					// List to insert into doesn't have full list bounds
+					insertList.InsertAfter(insertList.Tail, 20);
+					list.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+
+					Assert.That(
+						() => list.InsertAfter(list.Head, insertList),
+						Throws.TypeOf<IndexOutOfRangeException>());
+
+					// List to insert doesn't have full list bounds
+					list.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						list.Length - 1);
+					insertList.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+
+					Assert.That(
+						() => list.InsertAfter(list.Head, insertList),
+						Throws.TypeOf<IndexOutOfRangeException>());
+
+					insertList.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						insertList.Length - 1);
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListAfterWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeLinkedList<int> insertList = CreateEmptyNativeLinkedList(1))
+				{
+					AssertRequiresReadOrWriteAccess(
+						list,
+						() => list.InsertAfter(list.Head, insertList));
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListRangeAfterInsertsNodeAfterGivenEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 60, 70))
+			{
+				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(10, 20, 30, 40, 50, 60, 70))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertAfter(
+						list.Head.Next,
+						insertList.Head.Next.Next,
+						insertList.Head.Next.Next.Next.Next);
+
+					Assert.That(ret.Current, Is.EqualTo(30));
+					AssertListValues(list, 10, 20, 30, 40, 50, 60, 70);
+
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListRangeAfterTailUpdatesTail()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20))
+			{
+				NativeLinkedList<int>.Enumerator insert = list.InsertAfter(list.Tail, 30);
+
+				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(10, 20, 30, 40, 50, 60, 70))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertAfter(
+						insert,
+						insertList.Head.Next.Next.Next,
+						insertList.Head.Next.Next.Next.Next.Next);
+
+					Assert.That(ret.Current, Is.EqualTo(40));
+					Assert.That(list.Tail.Current, Is.EqualTo(60));
+					AssertListValues(list, 10, 20, 30, 40, 50, 60);
+
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListRangeAfterInsertsIntoEmptyList()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				list.Clear(); // invalidate the enumerator
+
+				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(10, 20, 30, 40, 50, 60, 70))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertAfter(
+						list.Tail,
+						insertList.Head.Next.Next.Next,
+						insertList.Head.Next.Next.Next.Next.Next);
+
+					Assert.That(ret.Current, Is.EqualTo(40));
+					Assert.That(list.Head.Current, Is.EqualTo(40));
+					Assert.That(list.Tail.Current, Is.EqualTo(60));
+					AssertListValues(list, 40, 50, 60);
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListRangeAfterWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(20))
+				{
+					list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+					Assert.That(
+						() => list.InsertAfter(
+							list.Head,
+							insertList.Head,
+							insertList.Head),
+						Throws.TypeOf<IndexOutOfRangeException>());
+
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+					list.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						list.Length - 1);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListRangeAfterWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(20))
+				{
+					AssertRequiresReadOrWriteAccess(
+						list,
+						() => list.InsertAfter(
+							list.Head,
+							insertList.Head,
+							insertList.Tail));
 					AssertGeneralInvariants(list);
 					AssertGeneralInvariants(insertList);
 				}
@@ -388,7 +642,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
 				NativeLinkedList<int>.Enumerator e = list.Head;
-				list.RemoveAll(); // invalidate the enumerator
+				list.Clear(); // invalidate the enumerator
 
 				using (NativeArray<int> array = CreateNativeArray(40, 50, 60))
 				{
@@ -400,6 +654,146 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Assert.That(list.Head.Current, Is.EqualTo(40));
 					Assert.That(list.Tail.Current, Is.EqualTo(60));
 					AssertListValues(list, 40, 50, 60);
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayAfterWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				using (NativeArray<int> array = CreateNativeArray(20))
+				{
+					list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+					Assert.That(
+						() => list.InsertAfter(list.Head, array),
+						Throws.TypeOf<IndexOutOfRangeException>());
+
+					AssertGeneralInvariants(list);
+					list.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						list.Length - 1);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayAfterWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeArray<int> array = CreateNativeArray(20))
+				{
+					AssertRequiresReadOrWriteAccess(
+						list,
+						() => list.InsertAfter(list.Head, array));
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayRangeAfterInsertsNodeAfterGivenEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 60, 70))
+			{
+				using (NativeArray<int> insertArray = CreateNativeArray(10, 20, 30, 40, 50, 60, 70))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertAfter(
+						list.Head.Next,
+						insertArray,
+						2,
+						3);
+
+					Assert.That(ret.Current, Is.EqualTo(30));
+					AssertListValues(list, 10, 20, 30, 40, 50, 60, 70);
+
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArraRangeAfterTailUpdatesTail()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeArray<int> insertArray = CreateNativeArray(10, 20, 30, 40, 50, 60, 70))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertAfter(
+						list.Tail,
+						insertArray,
+						3,
+						3);
+
+					Assert.That(ret.Current, Is.EqualTo(40));
+					Assert.That(list.Tail.Current, Is.EqualTo(60));
+					AssertListValues(list, 10, 20, 30, 40, 50, 60);
+
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayRangeAfterInsertsIntoEmptyList()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				list.Clear(); // invalidate the enumerator
+
+				using (NativeArray<int> array = CreateNativeArray(10, 20, 30, 40, 50, 60, 70))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertAfter(
+						list.Tail,
+						array,
+						3,
+						3);
+
+					Assert.That(ret.Current, Is.EqualTo(40));
+					Assert.That(list.Head.Current, Is.EqualTo(40));
+					Assert.That(list.Tail.Current, Is.EqualTo(60));
+					AssertListValues(list, 40, 50, 60);
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayRangeAfterWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				using (NativeArray<int> array = CreateNativeArray(20))
+				{
+					list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+					Assert.That(
+						() => list.InsertAfter(list.Head, array, 0, 1),
+						Throws.TypeOf<IndexOutOfRangeException>());
+
+					AssertGeneralInvariants(list);
+					list.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						list.Length - 1);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayRangeAfterWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeArray<int> array = CreateNativeArray(20))
+				{
+					AssertRequiresReadOrWriteAccess(
+						list,
+						() => list.InsertAfter(list.Head, array, 0, 1));
 					AssertGeneralInvariants(list);
 				}
 			}
@@ -444,7 +838,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
 				NativeLinkedList<int>.Enumerator e = list.Head;
-				list.RemoveAll(); // invalidate the enumerator
+				list.Clear(); // invalidate the enumerator
 
 				NativeLinkedList<int>.Enumerator ret = list.InsertAfter(
 					list.Tail,
@@ -454,6 +848,149 @@ namespace JacksonDunstan.NativeCollections.Tests
 				Assert.That(list.Head.Current, Is.EqualTo(40));
 				Assert.That(list.Tail.Current, Is.EqualTo(60));
 				AssertListValues(list, 40, 50, 60);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayAfterThrowsWhenArrayIsNull()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				Assert.That(
+					() => list.InsertAfter(list.Tail, null),
+					Throws.TypeOf<ArgumentNullException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayAfterWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+				Assert.That(
+					() => list.InsertAfter(list.Head, new [] { 20 }),
+					Throws.TypeOf<IndexOutOfRangeException>());
+
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayAfterWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.InsertAfter(list.Head, new [] { 20 }));
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayRangeAfterInsertsNodeAfterGivenEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 60, 70))
+			{
+				NativeLinkedList<int>.Enumerator ret = list.InsertAfter(
+					list.Head.Next,
+					new[] { 10, 20, 30, 40, 50, 60, 70 },
+					2,
+					3);
+
+				Assert.That(ret.Current, Is.EqualTo(30));
+				AssertListValues(list, 10, 20, 30, 40, 50, 60, 70);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayRangeAfterTailUpdatesTail()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator ret = list.InsertAfter(
+					list.Tail,
+					new[] { 10, 20, 30, 40, 50, 60, 70 },
+					3,
+					3);
+
+				Assert.That(ret.Current, Is.EqualTo(40));
+				Assert.That(list.Tail.Current, Is.EqualTo(60));
+				AssertListValues(list, 10, 20, 30, 40, 50, 60);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayRangeAfterInsertsIntoEmptyList()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				list.Clear(); // invalidate the enumerator
+
+				NativeLinkedList<int>.Enumerator ret = list.InsertAfter(
+					list.Tail,
+					new[] { 10, 20, 30, 40, 50, 60, 70 },
+					3,
+					3);
+
+				Assert.That(ret.Current, Is.EqualTo(40));
+				Assert.That(list.Head.Current, Is.EqualTo(40));
+				Assert.That(list.Tail.Current, Is.EqualTo(60));
+				AssertListValues(list, 40, 50, 60);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArraRangeAfterThrowsWhenArrayIsNull()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				Assert.That(
+					() => list.InsertAfter(list.Tail, null, 0, 1),
+					Throws.TypeOf<ArgumentNullException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayRangeAfterWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+				Assert.That(
+					() => list.InsertAfter(list.Head, new[] { 20 }, 0, 1),
+					Throws.TypeOf<IndexOutOfRangeException>());
+
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayRangeAfterWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.InsertAfter(list.Head, new [] { 20 }, 0, 1));
 				AssertGeneralInvariants(list);
 			}
 		}
@@ -503,7 +1040,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
 				NativeLinkedList<int>.Enumerator e = list.Head;
-				list.RemoveAll(); // invalidate the enumerator
+				list.Clear(); // invalidate the enumerator
 
 				NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
 					e,
@@ -513,6 +1050,35 @@ namespace JacksonDunstan.NativeCollections.Tests
 				Assert.That(list.Head.Current, Is.EqualTo(50));
 				Assert.That(list.Tail.Current, Is.EqualTo(50));
 				AssertListValues(list, 50);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertBeforeWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 50))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(2, 3);
+
+				Assert.That(
+					() => list.InsertBefore(list.Tail, 40),
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void InsertBeforeWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.InsertBefore(list.Head, 100));
 				AssertGeneralInvariants(list);
 			}
 		}
@@ -564,13 +1130,130 @@ namespace JacksonDunstan.NativeCollections.Tests
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
 				NativeLinkedList<int>.Enumerator e = list.Head;
-				list.RemoveAll(); // invalidate the enumerator
+				list.Clear(); // invalidate the enumerator
 
 				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(40, 50, 60))
 				{
 					NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
 						list.Tail,
 						insertList);
+
+					Assert.That(ret.Current, Is.EqualTo(40));
+					Assert.That(list.Head.Current, Is.EqualTo(40));
+					Assert.That(list.Tail.Current, Is.EqualTo(60));
+					AssertListValues(list, 40, 50, 60);
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListBeforeWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 50))
+			{
+				using (NativeLinkedList<int> insertList = CreateEmptyNativeLinkedList(20))
+				{
+					// List to insert into doesn't have full list bounds
+					list.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+
+					Assert.That(
+						() => list.InsertBefore(list.Tail, insertList),
+						Throws.TypeOf<IndexOutOfRangeException>());
+
+					// List to insert doesn't have full list bounds
+					list.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						list.Length - 1);
+					insertList.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+
+					Assert.That(
+						() => list.InsertBefore(list.Tail, insertList),
+						Throws.TypeOf<IndexOutOfRangeException>());
+
+					insertList.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						insertList.Length - 1);
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListBeforeWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(10, 20, 20, 30, 40, 50, 60))
+				{
+					AssertRequiresReadOrWriteAccess(
+						list,
+						() => list.InsertBefore(list.Head, insertList));
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListRangeBeforeInsertsNodeAfterGivenEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 50, 60, 70))
+			{
+				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(10, 20, 20, 30, 40, 50, 60))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
+						list.Head.Next,
+						insertList.Head.Next.Next,
+						insertList.Head.Next.Next.Next.Next);
+
+					Assert.That(ret.Current, Is.EqualTo(40));
+					AssertListValues(list, 10, 20, 30, 40, 50, 60, 70);
+
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListRangeBeforeHeadUpdatesHead()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(40, 50, 60))
+			{
+				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(0, 10, 20, 30, 40, 50))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
+						list.Head,
+						insertList.Head.Next,
+						insertList.Head.Next.Next.Next);
+
+					Assert.That(ret.Current, Is.EqualTo(30));
+					Assert.That(list.Head.Current, Is.EqualTo(10));
+					AssertListValues(list, 10, 20, 30, 40, 50, 60);
+
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListRangeBeforeInsertsIntoEmptyList()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				list.Clear(); // invalidate the enumerator
+
+				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(10, 20, 30, 40, 50, 60, 70))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
+						list.Tail,
+						insertList.Head.Next.Next.Next,
+						insertList.Head.Next.Next.Next.Next.Next);
 
 					Assert.That(ret.Current, Is.EqualTo(40));
 					Assert.That(list.Head.Current, Is.EqualTo(40));
@@ -602,12 +1285,72 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
+		public void InsertNativeLinkedListRangeBeforeWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(20))
+				{
+					list.TestUseOnlySetParallelForSafetyCheckRange(1, 3);
+
+					Assert.That(
+						() => list.InsertBefore(list.Tail, insertList.Head, insertList.Head),
+						Throws.TypeOf<IndexOutOfRangeException>());
+
+					AssertGeneralInvariants(list);
+					list.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						list.Length - 1);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeLinkedListRangeBeforeWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeLinkedList<int> insertList = CreateNativeLinkedList(20))
+				{
+					AssertRequiresReadOrWriteAccess(
+						list,
+						() => list.InsertBefore(
+							list.Head,
+							insertList.Head,
+							insertList.Head));
+					AssertGeneralInvariants(list);
+					AssertGeneralInvariants(insertList);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayBeforeHeadUpdatesHead()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(40, 50, 60))
+			{
+				using (NativeArray<int> insertArray = CreateNativeArray(10, 20, 30))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
+						list.Head,
+						insertArray);
+
+					Assert.That(ret.Current, Is.EqualTo(30));
+					Assert.That(list.Head.Current, Is.EqualTo(10));
+					AssertListValues(list, 10, 20, 30, 40, 50, 60);
+
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
 		public void InsertNativeArrayBeforeInsertsIntoEmptyList()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
 				NativeLinkedList<int>.Enumerator e = list.Head;
-				list.RemoveAll(); // invalidate the enumerator
+				list.Clear(); // invalidate the enumerator
 
 				using (NativeArray<int> array = CreateNativeArray(40, 50, 60))
 				{
@@ -619,6 +1362,146 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Assert.That(list.Head.Current, Is.EqualTo(40));
 					Assert.That(list.Tail.Current, Is.EqualTo(60));
 					AssertListValues(list, 40, 50, 60);
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayBeforeWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				using (NativeArray<int> array = CreateNativeArray(20))
+				{
+					list.TestUseOnlySetParallelForSafetyCheckRange(1, 3);
+
+					Assert.That(
+						() => list.InsertBefore(list.Tail, array),
+						Throws.TypeOf<IndexOutOfRangeException>());
+
+					AssertGeneralInvariants(list);
+					list.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						list.Length - 1);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayBeforeWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeArray<int> array = CreateNativeArray(20))
+				{
+					AssertRequiresReadOrWriteAccess(
+						list,
+						() => list.InsertBefore(list.Head, array));
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayRangeBeforeInsertsListBeforeGivenEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 50, 60, 70))
+			{
+				using (NativeArray<int> insertArray = CreateNativeArray(10, 20, 30, 40, 50, 60, 70))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
+						list.Head.Next,
+						insertArray,
+						1,
+						3);
+
+					Assert.That(ret.Current, Is.EqualTo(40));
+					AssertListValues(list, 10, 20, 30, 40, 50, 60, 70);
+
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayRangeBeforeHeadUpdatesHead()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(40, 50, 60))
+			{
+				using (NativeArray<int> insertArray = CreateNativeArray(0, 10, 20, 30, 40))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
+						list.Head,
+						insertArray,
+						1,
+						3);
+
+					Assert.That(ret.Current, Is.EqualTo(30));
+					Assert.That(list.Head.Current, Is.EqualTo(10));
+					AssertListValues(list, 10, 20, 30, 40, 50, 60);
+
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayRangeBeforeInsertsIntoEmptyList()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				list.Clear(); // invalidate the enumerator
+
+				using (NativeArray<int> array = CreateNativeArray(10, 20, 30, 40, 50, 60, 70))
+				{
+					NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
+						list.Tail,
+						array,
+						3,
+						3);
+
+					Assert.That(ret.Current, Is.EqualTo(40));
+					Assert.That(list.Head.Current, Is.EqualTo(40));
+					Assert.That(list.Tail.Current, Is.EqualTo(60));
+					AssertListValues(list, 40, 50, 60);
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayRangeBeforeWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				using (NativeArray<int> array = CreateNativeArray(20))
+				{
+					list.TestUseOnlySetParallelForSafetyCheckRange(1, 3);
+
+					Assert.That(
+						() => list.InsertBefore(list.Tail, array, 0, 1),
+						Throws.TypeOf<IndexOutOfRangeException>());
+
+					AssertGeneralInvariants(list);
+					list.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						list.Length - 1);
+				}
+			}
+		}
+
+		[Test]
+		public void InsertNativeArrayRangeBeforeWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeArray<int> array = CreateNativeArray(20))
+				{
+					AssertRequiresReadOrWriteAccess(
+						list,
+						() => list.InsertBefore(list.Head, array, 0, 1));
 					AssertGeneralInvariants(list);
 				}
 			}
@@ -667,7 +1550,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
 				NativeLinkedList<int>.Enumerator e = list.Head;
-				list.RemoveAll(); // invalidate the enumerator
+				list.Clear(); // invalidate the enumerator
 
 				NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
 					list.Tail,
@@ -682,24 +1565,245 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void IndexerGetReturnsWhatIsSet()
+		public void InsertManagedArrayBeforeThrowsWhenArrayIsNull()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
+				Assert.That(
+					() => list.InsertBefore(list.Tail, null),
+					Throws.TypeOf<ArgumentNullException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayBeforeWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(1, 3);
+
+				Assert.That(
+					() => list.InsertBefore(list.Tail, new[] { 20 }),
+					Throws.TypeOf<IndexOutOfRangeException>());
+
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayBeforeWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.InsertBefore(list.Head, new [] { 100 }));
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayRangeBeforeInsertsNodeBeforeGivenEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 50, 60, 70))
+			{
+				NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
+					list.Head.Next,
+					new[] { 10, 20, 30, 40, 50, 60, 70 },
+					1,
+					3);
+
+				Assert.That(ret.Current, Is.EqualTo(40));
+				Assert.That(
+					list,
+					Is.EqualTo(new[] { 10, 20, 30, 40, 50, 60, 70 }));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayRangeBeforeHeadUpdatesHead()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(40, 50, 60))
+			{
+				NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
+					list.Head,
+					new[] { 0, 10, 20, 30, 40 },
+					1,
+					3);
+
+				Assert.That(ret.Current, Is.EqualTo(30));
+				Assert.That(list.Head.Current, Is.EqualTo(10));
+				Assert.That(
+					list,
+					Is.EqualTo(new[] { 10, 20, 30, 40, 50, 60 }));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayRangeBeforeInsertsIntoEmptyList()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				list.Clear(); // invalidate the enumerator
+
+				NativeLinkedList<int>.Enumerator ret = list.InsertBefore(
+					list.Tail,
+					new[] { 10, 20, 30, 40, 50, 60, 70 },
+					3,
+					3);
+
+				Assert.That(ret.Current, Is.EqualTo(40));
+				Assert.That(list.Head.Current, Is.EqualTo(40));
+				Assert.That(list.Tail.Current, Is.EqualTo(60));
+				AssertListValues(list, 40, 50, 60);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayRangeBeforeThrowsWhenArrayIsNull()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				Assert.That(
+					() => list.InsertBefore(list.Tail, null, 0, 1),
+					Throws.TypeOf<ArgumentNullException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayRangeBeforeWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(1, 3);
+
+				Assert.That(
+					() => list.InsertBefore(list.Tail, new[] { 20 }, 0, 1),
+					Throws.TypeOf<IndexOutOfRangeException>());
+
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void InsertManagedArrayRangeBeforeWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.InsertBefore(list.Head, new [] { 100 }, 0, 1));
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void IndexerGetReturnsValueAtGivenIndex()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				Assert.That(list[1], Is.EqualTo(20));
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void IndexerGetCannotReadOutOfParallelForSafetyBounds()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(0, 1);
+
+				Assert.That(() => list[2], Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void IndexerGetWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				int val;
+
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => val = list[0]);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void IndexerSetChangesValueAtGivenIndex()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				// Need to make a copy because we can't change a 'using' var
 				NativeLinkedList<int> copy = list;
+
 				copy[1] = 200;
-				int ret = copy[1];
 
-				Assert.That(ret, Is.EqualTo(200));
+				Assert.That(list.Head.Next.Value, Is.EqualTo(200));
+				AssertGeneralInvariants(list);
+			}
+		}
 
-				AssertGeneralInvariants(copy);
+		[Test]
+		public void IndexerSetCannotWritOutOfParallelForSafetyBounds()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				// Need to make a copy because we can't change a 'using' var
+				NativeLinkedList<int> copy = list;
+				copy.TestUseOnlySetParallelForSafetyCheckRange(0, 1);
+
+				Assert.That(
+					() => copy[2] = 200,
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void IndexerSetWhenReadOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				// Need to make a copy because we can't change a 'using' var
+				NativeLinkedList<int> copy = list;
+
+				AssertRequiresReadOrWriteAccess(
+					copy,
+					() => copy[0] = 100);
+				AssertGeneralInvariants(list);
 			}
 		}
 
 		[Test]
 		public void GetEnumeratorAtIndexReturnsEnumeratorForTheGivenIndex()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				list.InsertAfter(list.Tail, 10);
 				NativeLinkedList<int>.Enumerator e20 = list.InsertAfter(list.Tail, 20);
@@ -709,6 +1813,20 @@ namespace JacksonDunstan.NativeCollections.Tests
 
 				Assert.That(e, Is.EqualTo(e20));
 
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetEnumeratorAtIndexWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => e = list.GetEnumeratorAtIndex(1));
 				AssertGeneralInvariants(list);
 			}
 		}
@@ -744,11 +1862,95 @@ namespace JacksonDunstan.NativeCollections.Tests
 				AssertGeneralInvariants(list);
 			}
 		}
-    
-        [Test]
+
+		[Test]
+		public void SortNodeMemoryAddressesWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+				Assert.That(
+					() => list.SortNodeMemoryAddresses(),
+					Throws.TypeOf<IndexOutOfRangeException>());
+
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void SortNodeMemoryAddressesWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.SortNodeMemoryAddresses());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetCapacityReturnsGreaterValueThanLength()
+		{
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(4))
+			{
+				list.InsertAfter(list.Tail, 10);
+
+				Assert.That(list.Capacity, Is.GreaterThan(list.Length));
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetCapacityWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				int val;
+
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => val = list.Capacity);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetLengthReturnsSmallerValueThanCapacity()
+		{
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(4))
+			{
+				list.InsertAfter(list.Tail, 10);
+
+				Assert.That(list.Length, Is.LessThan(list.Capacity));
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetLengthWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				int val;
+
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => val = list.Length);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
         public void GetHeadReturnsInvalidEnumeratorForEmptyList()
         {
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
             {
 				NativeLinkedList<int>.Enumerator e = list.Head;
                 
@@ -756,7 +1958,21 @@ namespace JacksonDunstan.NativeCollections.Tests
                 
                 AssertGeneralInvariants(list);
             }
-        }
+		}
+
+		[Test]
+		public void GetHeadWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => e = list.Head);
+				AssertGeneralInvariants(list);
+			}
+		}
 
 		[Test]
 		public void GetHeadReturnsEnumeratorForFirstNode()
@@ -774,7 +1990,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		[Test]
 		public void GetEnumeratorReturnsInvalidEnumeratorForEmptyList()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				NativeLinkedList<int>.Enumerator e = list.GetEnumerator();
 
@@ -806,9 +2022,23 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
+		public void GetEnumeratorWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => e = list.GetEnumerator());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
 		public void GetEnumeratorIEnumerableVersionReturnsInvalidEnumeratorForEmptyList()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				NativeLinkedList<int>.Enumerator e = (NativeLinkedList<int>.Enumerator)((IEnumerable)list).GetEnumerator();
 
@@ -840,9 +2070,23 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
+		public void GetEnumeratorIEnumerableVersionWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => e = (NativeLinkedList<int>.Enumerator)((IEnumerable)list).GetEnumerator());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
 		public void GetEnumeratorIEnumerableTVersionReturnsInvalidEnumeratorForEmptyList()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				NativeLinkedList<int>.Enumerator e = (NativeLinkedList<int>.Enumerator)((IEnumerable<int>)list).GetEnumerator();
 
@@ -869,6 +2113,20 @@ namespace JacksonDunstan.NativeCollections.Tests
 
 				Assert.That(e.Current, Is.EqualTo(10));
 
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void GetEnumeratorIEnumerableTVersionWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => e = (NativeLinkedList<int>.Enumerator)((IEnumerable<int>)list).GetEnumerator());
 				AssertGeneralInvariants(list);
 			}
 		}
@@ -908,7 +2166,7 @@ namespace JacksonDunstan.NativeCollections.Tests
         [Test]
         public void GetTailReturnsInvalidEnumeratorForEmptyList()
         {
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
             {
 				NativeLinkedList<int>.Enumerator e = list.Tail;
                 
@@ -932,7 +2190,21 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void GetListReturnsListEnumeratorIsFor()
+		public void GetTailWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => e = list.Tail);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetListReturnsListEnumeratorIsFor()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -945,7 +2217,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
         
         [Test]
-        public void MoveNextMakesEnumeratorReferToNextNode()
+        public void EnumeratorMoveNextMakesEnumeratorReferToNextNode()
         {
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
             {
@@ -960,7 +2232,7 @@ namespace JacksonDunstan.NativeCollections.Tests
         }
 
 		[Test]
-		public void MoveNextAtTailInvalidatesEnumerator()
+		public void EnumeratorMoveNextAtTailInvalidatesEnumerator()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -975,7 +2247,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void MoveNextWithInvalidEnumeratorKeepsEnumeratorInvalid()
+		public void EnumeratorMoveNextWithInvalidEnumeratorKeepsEnumeratorInvalid()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -991,7 +2263,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void MoveNextWhenPreviouslyValidMakesEnumeratorReferToHead()
+		public void EnumeratorMoveNextWhenPreviouslyValidMakesEnumeratorReferToHead()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
@@ -1007,7 +2279,22 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void MoveNextNumStepsMakesEnumeratorReferToNextNextNode()
+		public void EnumeratorMoveNextWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Tail;
+				e.TestUseOnlySetParallelForSafetyCheckRange(0, 1);
+
+				Assert.That(
+					() => e.MoveNext(),
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorMoveNextNumStepsMakesEnumeratorReferToNextNextNode()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1022,7 +2309,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void MoveNextNumStepsBeyondTailInvalidatesEnumerator()
+		public void EnumeratorMoveNextNumStepsBeyondTailInvalidatesEnumerator()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20))
 			{
@@ -1038,7 +2325,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void MoveNextNumStepsWithInvalidEnumeratorKeepsEnumeratorInvalid()
+		public void EnumeratorMoveNextNumStepsWithInvalidEnumeratorKeepsEnumeratorInvalid()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1054,7 +2341,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void MoveNextNumStepsWhenPreviouslyValidMakesEnumeratorReferToHead()
+		public void EnumeratorMoveNextNumStepsWhenPreviouslyValidMakesEnumeratorReferToHead()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
@@ -1070,7 +2357,50 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void GetNextReturnsEnumeratorToNextNode()
+		public void EnumeratorMoveNextNumStepsWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				e.TestUseOnlySetParallelForSafetyCheckRange(0, 0);
+
+				Assert.That(
+					() => e.MoveNext(2),
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorMoveNextNumStepsWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => e.MoveNext());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorMoveNextWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => e.MoveNext());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetNextReturnsEnumeratorToNextNode()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1085,7 +2415,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void GetNextAtTailReturnsInvalidEnumerator()
+		public void EnumeratorGetNextAtTailReturnsInvalidEnumerator()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1100,7 +2430,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void GetNextWithInvalidEnumeratorReturnsInvalidEnumerator()
+		public void EnumeratorGetNextWithInvalidEnumeratorReturnsInvalidEnumerator()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1116,13 +2446,10 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void GetNextWhenPreviouslyValidReturnsHead()
+		public void EnumeratorGetNextWhenPreviouslyValidReturnsHead()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
-				list.InsertAfter(list.Tail, 10);
-				list.InsertAfter(list.Tail, 20);
-				list.InsertAfter(list.Tail, 30);
 				NativeLinkedList<int>.Enumerator e = list.InsertAfter(list.Tail, 40);
 				e.MoveNext();
 
@@ -1133,9 +2460,38 @@ namespace JacksonDunstan.NativeCollections.Tests
 				AssertGeneralInvariants(list);
 			}
 		}
-        
-        [Test]
-		public void MovePrevMakesEnumeratorReferToPreviousNode()
+
+		[Test]
+		public void EnumeratorGetNextWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Tail;
+				e.TestUseOnlySetParallelForSafetyCheckRange(0, 1);
+
+				Assert.That(
+					() => e.Next,
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetNextWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => e = e.Next);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorMovePrevMakesEnumeratorReferToPreviousNode()
         {
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
             {
@@ -1150,7 +2506,7 @@ namespace JacksonDunstan.NativeCollections.Tests
         }
 
 		[Test]
-		public void MovePrevAtHeadInvalidatesEnumerator()
+		public void EnumeratorMovePrevAtHeadInvalidatesEnumerator()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1165,7 +2521,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void MovePrevWithInvalidEnumeratorKeepsEnumeratorInvalid()
+		public void EnumeratorMovePrevWithInvalidEnumeratorKeepsEnumeratorInvalid()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1181,9 +2537,9 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void MovePrevWhenPreviouslyValidMakesEnumeratorReferToTail()
+		public void EnumeratorMovePrevWhenPreviouslyValidMakesEnumeratorReferToTail()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				NativeLinkedList<int>.Enumerator e = list.InsertAfter(list.Tail, 10);
 				list.InsertAfter(list.Tail, 20);
@@ -1200,7 +2556,36 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void MovePrevNumStepsMakesEnumeratorReferToPreviousNode()
+		public void EnumeratorMovePrevWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Tail;
+				e.TestUseOnlySetParallelForSafetyCheckRange(0, 1);
+
+				Assert.That(
+					() => e.MovePrev(),
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorMovePrevWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Tail;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => e.MovePrev());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorMovePrevNumStepsMakesEnumeratorReferToPreviousNode()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1215,9 +2600,9 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void MovePrevNumStepsAtHeadInvalidatesEnumerator()
+		public void EnumeratorMovePrevNumStepsAtHeadInvalidatesEnumerator()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				list.InsertAfter(list.Tail, 10);
 				NativeLinkedList<int>.Enumerator e = list.InsertAfter(list.Tail, 20);
@@ -1233,7 +2618,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void MovePrevNumStepsWithInvalidEnumeratorKeepsEnumeratorInvalid()
+		public void EnumeratorMovePrevNumStepsWithInvalidEnumeratorKeepsEnumeratorInvalid()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1249,9 +2634,9 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void MovePrevNumStepsWhenPreviouslyValidMakesEnumeratorReferToTail()
+		public void EnumeratorMovePrevNumStepsWhenPreviouslyValidMakesEnumeratorReferToTail()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				NativeLinkedList<int>.Enumerator e = list.InsertAfter(list.Tail, 10);
 				list.InsertAfter(list.Tail, 20);
@@ -1268,7 +2653,36 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void GetPrevReturnsEnumeratorToPreviousNode()
+		public void EnumeratorMovePrevNumStepsWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Tail;
+				e.TestUseOnlySetParallelForSafetyCheckRange(2, 2);
+
+				Assert.That(
+					() => e.MovePrev(2),
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorMovePrevNumStepsWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Tail;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => e.MovePrev(1));
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetPrevReturnsEnumeratorToPreviousNode()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1283,7 +2697,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void GetPrevAtHeadReturnsInvalidEnumerator()
+		public void EnumeratorGetPrevAtHeadReturnsInvalidEnumerator()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1298,7 +2712,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void GetPrevWithInvalidEnumeratorReturnsInvalidEnumerator()
+		public void EnumeratorGetPrevWithInvalidEnumeratorReturnsInvalidEnumerator()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1314,9 +2728,9 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void GetPrevWhenPreviouslyValidReturnsTail()
+		public void EnumeratorGetPrevWhenPreviouslyValidReturnsTail()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				NativeLinkedList<int>.Enumerator e = list.InsertAfter(list.Tail, 10);
 				list.InsertAfter(list.Tail, 20);
@@ -1333,11 +2747,55 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void IsValidReturnsFalseForDefaultEnumerator()
+		public void EnumeratorGetPrevWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Tail;
+				e.TestUseOnlySetParallelForSafetyCheckRange(0, 1);
+
+				Assert.That(
+					() => e.Prev,
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetPrevWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Tail;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => e = e.Prev);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorIsValidReturnsFalseForDefaultEnumerator()
 		{
 			NativeLinkedList<int>.Enumerator e = default(NativeLinkedList<int>.Enumerator);
 
 			Assert.That(e.IsValid, Is.False);
+		}
+
+		[Test]
+		public void EnumeratorIsValidWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				bool valid = false;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => valid = e.IsValid);
+				AssertGeneralInvariants(list);
+			}
 		}
 
 		[Test]
@@ -1395,6 +2853,29 @@ namespace JacksonDunstan.NativeCollections.Tests
 
 					Assert.That(a == b, Is.False);
 
+					AssertGeneralInvariants(listA);
+					AssertGeneralInvariants(listB);
+				}
+			}
+		}
+
+		[Test]
+		public void EnumeratorEqualityOperatorWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> listA = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeLinkedList<int> listB = CreateNativeLinkedList(10, 20, 30))
+				{
+					NativeLinkedList<int>.Enumerator eA = listA.Head;
+					NativeLinkedList<int>.Enumerator eB = listB.Head;
+					bool isEqual = false;
+
+					AssertRequiresReadOrWriteAccess(
+						eA,
+						() => isEqual = eA == listB.Head);
+					AssertRequiresReadOrWriteAccess(
+						eB,
+						() => isEqual = eB == listA.Head);
 					AssertGeneralInvariants(listA);
 					AssertGeneralInvariants(listB);
 				}
@@ -1476,6 +2957,29 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
+		public void EnumeratorEqualsWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> listA = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeLinkedList<int> listB = CreateNativeLinkedList(10, 20, 30))
+				{
+					NativeLinkedList<int>.Enumerator eA = listA.Head;
+					NativeLinkedList<int>.Enumerator eB = listB.Head;
+					bool isEqual = false;
+
+					AssertRequiresReadOrWriteAccess(
+						eA,
+						() => isEqual = eA.Equals((object)listB.Head));
+					AssertRequiresReadOrWriteAccess(
+						eB,
+						() => isEqual = eB.Equals((object)listA.Head));
+					AssertGeneralInvariants(listA);
+					AssertGeneralInvariants(listB);
+				}
+			}
+		}
+
+		[Test]
 		public void EnumeratorGenericEqualsReturnsTrueForSameNode()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
@@ -1530,6 +3034,29 @@ namespace JacksonDunstan.NativeCollections.Tests
 
 					Assert.That(a.Equals(b), Is.False);
 
+					AssertGeneralInvariants(listA);
+					AssertGeneralInvariants(listB);
+				}
+			}
+		}
+
+		[Test]
+		public void EnumeratorGenericEqualsWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> listA = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeLinkedList<int> listB = CreateNativeLinkedList(10, 20, 30))
+				{
+					NativeLinkedList<int>.Enumerator eA = listA.Head;
+					NativeLinkedList<int>.Enumerator eB = listB.Head;
+					bool isEqual = false;
+
+					AssertRequiresReadOrWriteAccess(
+						eA,
+						() => isEqual = eA.Equals(listB.Head));
+					AssertRequiresReadOrWriteAccess(
+						eB,
+						() => isEqual = eB.Equals(listA.Head));
 					AssertGeneralInvariants(listA);
 					AssertGeneralInvariants(listB);
 				}
@@ -1598,9 +3125,142 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
+		public void EnumeratorInequalityOperatorWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> listA = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeLinkedList<int> listB = CreateNativeLinkedList(10, 20, 30))
+				{
+					NativeLinkedList<int>.Enumerator eA = listA.Head;
+					NativeLinkedList<int>.Enumerator eB = listB.Head;
+					bool isNotEqual = false;
+
+					AssertRequiresReadOrWriteAccess(
+						eA,
+						() => isNotEqual = eA != listB.Head);
+					AssertRequiresReadOrWriteAccess(
+						eB,
+						() => isNotEqual = eB != listA.Head);
+					AssertGeneralInvariants(listA);
+					AssertGeneralInvariants(listB);
+				}
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetDistanceReturnsZeroForSameEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				int distance = list.Head.GetDistance(list.Head);
+
+				Assert.That(distance, Is.EqualTo(0));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetDistanceReturnsNegativeForInvalidEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				int distance = list.Head.Prev.GetDistance(list.Head);
+
+				Assert.That(distance, Is.LessThan(0));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetDistanceReturnsNegativeGivenInvalidEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				int distance = list.Head.GetDistance(list.Head.Prev);
+
+				Assert.That(distance, Is.LessThan(0));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetDistanceReturnsNegativeForDifferentLists()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeLinkedList<int> otherList = CreateNativeLinkedList(10, 20, 30))
+				{
+					int distance = list.Head.GetDistance(otherList.Head);
+
+					Assert.That(distance, Is.LessThan(0));
+
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetDistanceReturnsNegativeForBehindEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				int distance = list.Tail.GetDistance(list.Head);
+
+				Assert.That(distance, Is.LessThan(0));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetDistanceReturnsPositiveForAheadEnumerator()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				int distance = list.Head.GetDistance(list.Tail);
+
+				Assert.That(distance, Is.EqualTo(2));
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetDistanceWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator start = list.Head;
+				start.TestUseOnlySetParallelForSafetyCheckRange(0, 0);
+
+				Assert.That(
+					() => start.GetDistance(list.Tail),
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetDistanceWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => e.GetDistance(list.Tail));
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
 		public void EnumeratorGetHashCodeReturnsDifferentValuesForDifferentNodes()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				NativeLinkedList<int>.Enumerator a = list.InsertAfter(list.Tail, 10);
 				NativeLinkedList<int>.Enumerator b = list.InsertAfter(list.Tail, 20);
@@ -1619,7 +3279,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		[Test]
 		public void EnumeratorDisposeDoesNotThrowException()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				NativeLinkedList<int>.Enumerator e = list.InsertAfter(list.Tail, 10);
 				list.InsertAfter(list.Tail, 20);
@@ -1633,9 +3293,9 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void ResetMakesEnumeratorReferToHead()
+		public void EnumeratorResetMakesEnumeratorReferToHead()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				list.InsertAfter(list.Tail, 10);
 				list.InsertAfter(list.Tail, 20);
@@ -1651,7 +3311,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void ResetInvalidEnumeratorKeepsEnumeratorInvalid()
+		public void EnumeratorResetInvalidEnumeratorKeepsEnumeratorInvalid()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1667,9 +3327,23 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void GetValueReturnsNodeValue()
+		public void EnumeratorResetWhenWriteOnlyThrowsException()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => e.Reset());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetValueReturnsNodeValue()
+		{
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				list.InsertAfter(list.Tail, 10);
 				list.InsertAfter(list.Tail, 20);
@@ -1684,9 +3358,39 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void GetCurrentReturnsNodeValue()
+		public void EnumeratorGetValueWhenOutOfSafetyCheckBoundsThrowsException()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				e.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+
+				Assert.That(
+					() => e.Value,
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetValueWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				int val;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => val = e.Value);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetCurrentReturnsNodeValue()
+		{
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				list.InsertAfter(list.Tail, 10);
 				list.InsertAfter(list.Tail, 20);
@@ -1701,7 +3405,37 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void IsValidReturnsTrueForValidEnumerator()
+		public void EnumeratorGetCurrentWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				e.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+
+				Assert.That(
+					() => e.Current,
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetCurrentWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				int val;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => val = e.Current);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorIsValidReturnsTrueForValidEnumerator()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
@@ -1712,7 +3446,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void IsValidReturnsFalseWhenIndexIsNegative()
+		public void EnumeratorIsValidReturnsFalseWhenIndexIsNegative()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
@@ -1723,7 +3457,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void IsValidReturnsFalseWhenIndexIsTooLarge()
+		public void EnumeratorIsValidReturnsFalseWhenIndexIsTooLarge()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
@@ -1734,9 +3468,9 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void IsValidReturnsFalseAfterEnumeratorsAreInvalidated()
+		public void EnumeratorIsValidReturnsFalseAfterEnumeratorsAreInvalidated()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
 			{
 				list.InsertAfter(list.Tail, 10);
 				list.InsertAfter(list.Tail, 20);
@@ -1751,7 +3485,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void IsValidForReturnsTrueForValidEnumerator()
+		public void EnumeratorIsValidForReturnsTrueForValidEnumerator()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
@@ -1762,7 +3496,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void IsValidForReturnsFalseWhenIndexIsNegative()
+		public void EnumeratorIsValidForReturnsFalseWhenIndexIsNegative()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
@@ -1773,7 +3507,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void IsValidForReturnsFalseWhenIndexIsTooLarge()
+		public void EnumeratorIsValidForReturnsFalseWhenIndexIsTooLarge()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
@@ -1784,7 +3518,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void IsValidForReturnsFalseForDetaultEnumerator()
+		public void EnumeratorIsValidForReturnsFalseForDetaultEnumerator()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
@@ -1796,7 +3530,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void IsValidForReturnsFalseAfterEnumeratorsAreInvalidated()
+		public void EnumeratorIsValidForReturnsFalseAfterEnumeratorsAreInvalidated()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
@@ -1810,7 +3544,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void IsValidForReturnsFalseForOtherList()
+		public void EnumeratorIsValidForReturnsFalseForOtherList()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
@@ -1823,7 +3557,21 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void GetIEnumeratorCurrentReturnsNodeValue()
+		public void EnumeratorIsValidForWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => e.IsValidFor(list));
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetIEnumeratorCurrentReturnsNodeValue()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
 			{
@@ -1835,8 +3583,38 @@ namespace JacksonDunstan.NativeCollections.Tests
 			}
 		}
 
-        [Test]
-        public void SetValueSetsNodeValue()
+		[Test]
+		public void EnumeratorGetIEnumeratorCurrentWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				e.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+
+				Assert.That(
+					() => ((IEnumerator)e).Current,
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorGetIEnumeratorCurrentWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				object val;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => val = ((IEnumerator)e).Current);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+        public void EnumeratorSetValueSetsNodeValue()
         {
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
             {
@@ -1850,10 +3628,39 @@ namespace JacksonDunstan.NativeCollections.Tests
             }
 		}
 
-        [Test]
+		[Test]
+		public void EnumeratorSetValueWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+				e.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+
+				Assert.That(
+					() => e.Value = 100,
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void EnumeratorSetValueWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				NativeLinkedList<int>.Enumerator e = list.Head;
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => e.Value = 100);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
         public void RemoveDoesNothingWhenEnumeratorIsInvalid()
         {
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
             {
 				NativeLinkedList<int>.Enumerator e10 = list.InsertAfter(list.Tail, 10);
 				NativeLinkedList<int>.Enumerator e20 = list.InsertAfter(list.Tail, 20);
@@ -1875,7 +3682,7 @@ namespace JacksonDunstan.NativeCollections.Tests
         [Test]
         public void RemoveOnlyNodeEmptiesList()
         {
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(10))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(10))
             {
 				NativeLinkedList<int>.Enumerator e = list.Head;
                 
@@ -1893,7 +3700,7 @@ namespace JacksonDunstan.NativeCollections.Tests
         [Test]
         public void RemoveHeadLeavesRemainingNodesReturnsNext()
         {
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
             {
 				NativeLinkedList<int>.Enumerator e10 = list.InsertAfter(list.Tail, 10);
 				NativeLinkedList<int>.Enumerator e20 = list.InsertAfter(list.Tail, 20);
@@ -1917,7 +3724,7 @@ namespace JacksonDunstan.NativeCollections.Tests
         [Test]
         public void RemoveHeadWhenNotFirstElementLeavesRemainingNodesReturnsNext()
         {
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(4))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(4))
             {
 				NativeLinkedList<int>.Enumerator e10 = list.InsertAfter(list.Tail, 10);
 				NativeLinkedList<int>.Enumerator e20 = list.InsertAfter(list.Tail, 20);
@@ -1953,7 +3760,7 @@ namespace JacksonDunstan.NativeCollections.Tests
         [Test]
         public void RemoveTailLeavesRemainingNodesReturnsPrev()
         {
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
             {
 				NativeLinkedList<int>.Enumerator e10 = list.InsertAfter(list.Tail, 10);
 				NativeLinkedList<int>.Enumerator e20 = list.InsertAfter(list.Tail, 20);
@@ -1977,7 +3784,7 @@ namespace JacksonDunstan.NativeCollections.Tests
         [Test]
         public void RemoveTailWhenNotLastElementLeavesRemainingNodesReturnsPrev()
         {
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(4))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(4))
             {
 				NativeLinkedList<int>.Enumerator e10 = list.InsertAfter(list.Tail, 10);
 				NativeLinkedList<int>.Enumerator e20 = list.InsertAfter(list.Tail, 20);
@@ -2013,7 +3820,7 @@ namespace JacksonDunstan.NativeCollections.Tests
         [Test]
         public void RemoveMiddleLeavesRemainingNodesReturnsPrev()
         {
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(3))
+			using (NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3))
             {
 				NativeLinkedList<int>.Enumerator e10 = list.InsertAfter(list.Tail, 10);
 				NativeLinkedList<int>.Enumerator e20 = list.InsertAfter(list.Tail, 20);
@@ -2035,13 +3842,73 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void RemoveAllRemovesAllNodes()
+		public void RemoveWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+				Assert.That(
+					() => list.Remove(list.Head),
+					Throws.TypeOf<IndexOutOfRangeException>());
+
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void RemoveWhenWriteOnlyThrowsException()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
-				list.RemoveAll();
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.Remove(list.Head));
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void ClearRemovesAllNodes()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				list.Clear();
 
 				AssertListValues(list);
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void ClearWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+				Assert.That(
+					() => list.Clear(),
+					Throws.TypeOf<IndexOutOfRangeException>());
+
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void ClearWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.Clear());
 				AssertGeneralInvariants(list);
 			}
 		}
@@ -2099,7 +3966,39 @@ namespace JacksonDunstan.NativeCollections.Tests
 			}
 		}
 
-        [Test]
+		[Test]
+		public void SwapWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+
+				Assert.That(
+					() => list.Swap(list.Head, list.Tail),
+					Throws.TypeOf<IndexOutOfRangeException>());
+				Assert.That(
+					() => list.Swap(list.Tail, list.Head),
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void SwapWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.Swap(list.Head, list.Tail));
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
         public void ToArrayAllocatesAndCopiesWholeListByDefault()
         {
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
@@ -2232,6 +4131,36 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
+		public void ToArrayWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+				int[] array = new int[5];
+
+				Assert.That(
+					() => list.ToArray(array, list.Head, 0, 1),
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void ToArrayWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.ToArray());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
 		public void ToArrayFullCopiesListToStartOfArray()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
@@ -2242,6 +4171,48 @@ namespace JacksonDunstan.NativeCollections.Tests
 
 				Assert.That(arr, Is.EqualTo(new [] { 10, 20, 30, 0, 0, 0 }));
 
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void ToArrayFullThrowsWhenArrayIsNull()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				Assert.That(
+					() => list.ToArrayFull(null),
+					Throws.TypeOf<ArgumentNullException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void ToArrayFullWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+				Assert.That(
+					() => list.ToArrayFull(new int[list.Length]),
+					Throws.TypeOf<IndexOutOfRangeException>());
+
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void ToArrayFullWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.ToArrayFull(new int[list.Length]));
 				AssertGeneralInvariants(list);
 			}
 		}
@@ -2379,6 +4350,36 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
+		public void ToArrayReverseWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+				int[] array = new int[5];
+
+				Assert.That(
+					() => list.ToArrayReverse(array, list.Head, 0, 1),
+					Throws.TypeOf<IndexOutOfRangeException>());
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void ToArrayReverseWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.ToArrayReverse());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
 		public void ToArrayFullReverseCopiesListToStartOfArray()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
@@ -2389,6 +4390,48 @@ namespace JacksonDunstan.NativeCollections.Tests
 
 				Assert.That(arr, Is.EqualTo(new [] { 30, 20, 10, 0, 0, 0 }));
 
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void ToArrayFullReverseThrowsWhenArrayIsNull()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				Assert.That(
+					() => list.ToArrayFullReverse(null),
+					Throws.TypeOf<ArgumentNullException>());
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
+		public void ToArrayFulReverseWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+				Assert.That(
+					() => list.ToArrayFullReverse(new int[list.Length]),
+					Throws.TypeOf<IndexOutOfRangeException>());
+
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange(
+					0,
+					list.Length - 1);
+			}
+		}
+
+		[Test]
+		public void ToArrayFullReverseWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.ToArrayFullReverse(new int[list.Length]));
 				AssertGeneralInvariants(list);
 			}
 		}
@@ -2585,16 +4628,87 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
+		public void ToNativeArrayWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
+			{
+				using (NativeArray<int> array = CreateNativeArray(0, 0, 0, 0, 0))
+				{
+					list.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+
+					Assert.That(
+						() => list.ToNativeArray(array, list.Head, 0, 1),
+						Throws.TypeOf<IndexOutOfRangeException>());
+					AssertGeneralInvariants(list);
+					list.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						list.Length - 1);
+				}
+			}
+		}
+
+		[Test]
+		public void ToNativeArrayWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeArray<int> array = CreateNativeArray(0, 0, 0, 0, 0))
+				{
+					AssertRequiresReadOrWriteAccess(
+						list,
+						() => list.ToNativeArray(array));
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
 		public void ToNativeArrayFullCopiesListToStartOfArray()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
-				using (NativeArray<int> arr = CreateNativeArray(0, 0, 0, 0, 0, 0))
+				using (NativeArray<int> array = CreateNativeArray(0, 0, 0, 0, 0, 0))
 				{
-					list.ToNativeArrayFull(arr);
+					list.ToNativeArrayFull(array);
 
-					Assert.That(arr, Is.EqualTo(new [] { 10, 20, 30, 0, 0, 0 }));
+					Assert.That(array, Is.EqualTo(new [] { 10, 20, 30, 0, 0, 0 }));
 
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
+		public void ToNativeArrayFullWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				using (NativeArray<int> array = CreateNativeArray(0, 0, 0, 0, 0, 0))
+				{
+					list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+					Assert.That(
+						() => list.ToNativeArrayFull(array),
+						Throws.TypeOf<IndexOutOfRangeException>());
+
+					AssertGeneralInvariants(list);
+					list.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						list.Length - 1);
+				}
+			}
+		}
+
+		[Test]
+		public void ToNativeArrayFullWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeArray<int> array = CreateNativeArray(0, 0, 0, 0, 0))
+				{
+					AssertRequiresReadOrWriteAccess(
+						list,
+						() => list.ToNativeArrayFull(array));
 					AssertGeneralInvariants(list);
 				}
 			}
@@ -2605,9 +4719,9 @@ namespace JacksonDunstan.NativeCollections.Tests
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
-				using (NativeArray<int> arr = list.ToNativeArrayReverse())
+				using (NativeArray<int> array = list.ToNativeArrayReverse())
 				{
-					Assert.That(arr, Is.EqualTo(new [] { 30, 20, 10 }));
+					Assert.That(array, Is.EqualTo(new [] { 30, 20, 10 }));
 
 					AssertGeneralInvariants(list);
 				}
@@ -2619,16 +4733,16 @@ namespace JacksonDunstan.NativeCollections.Tests
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
-				using (NativeArray<int> arr = CreateNativeArray(0, 0, 0))
+				using (NativeArray<int> array = CreateNativeArray(0, 0, 0))
 				{
 					NativeArray<int> ret = list.ToNativeArrayReverse(
-						arr,
+						array,
 						list.Tail,
 						0,
 						-1);
 
-					AssertSameNativeArrays(arr, ret);
-					Assert.That(arr, Is.EqualTo(new [] { 30, 20, 10 }));
+					AssertSameNativeArrays(array, ret);
+					Assert.That(array, Is.EqualTo(new [] { 30, 20, 10 }));
 					Assert.That(ret, Is.EqualTo(new [] { 30, 20, 10 }));
 
 					AssertGeneralInvariants(list);
@@ -2792,25 +4906,96 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
+		public void ToNativeArrayReverseWhenOutOfSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40))
+			{
+				using (NativeArray<int> array = CreateNativeArray(0, 0, 0, 0, 0))
+				{
+					list.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
+
+					Assert.That(
+						() => list.ToNativeArrayReverse(array, list.Head, 0, 1),
+						Throws.TypeOf<IndexOutOfRangeException>());
+					AssertGeneralInvariants(list);
+					list.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						list.Length - 1);
+				}
+			}
+		}
+
+		[Test]
+		public void ToNativeArrayReverseWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeArray<int> array = CreateNativeArray(0, 0, 0, 0, 0))
+				{
+					AssertRequiresReadOrWriteAccess(
+						list,
+						() => list.ToNativeArrayReverse(array));
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
 		public void ToNativeArrayFullReverseCopiesListToStartOfArray()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
 			{
-				using (NativeArray<int> arr = CreateNativeArray(0, 0, 0, 0, 0, 0))
+				using (NativeArray<int> array = CreateNativeArray(0, 0, 0, 0, 0, 0))
 				{
-					list.ToNativeArrayFullReverse(arr);
+					list.ToNativeArrayFullReverse(array);
 
-					Assert.That(arr, Is.EqualTo(new [] { 30, 20, 10, 0, 0, 0 }));
+					Assert.That(array, Is.EqualTo(new [] { 30, 20, 10, 0, 0, 0 }));
 
 					AssertGeneralInvariants(list);
 				}
 			}
 		}
 
-        [Test]
+		[Test]
+		public void ToNativeArrayFullReverseWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))
+			{
+				using (NativeArray<int> array = CreateNativeArray(0, 0, 0, 0, 0, 0))
+				{
+					list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+					Assert.That(
+						() => list.ToNativeArrayFullReverse(array),
+						Throws.TypeOf<IndexOutOfRangeException>());
+
+					AssertGeneralInvariants(list);
+					list.TestUseOnlySetParallelForSafetyCheckRange(
+						0,
+						list.Length - 1);
+				}
+			}
+		}
+
+		[Test]
+		public void ToNativeArraFullReverseWhenWriteOnlyThrowsException()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				using (NativeArray<int> array = CreateNativeArray(0, 0, 0, 0, 0))
+				{
+					AssertRequiresReadOrWriteAccess(
+						list,
+						() => list.ToNativeArrayFullReverse(array));
+					AssertGeneralInvariants(list);
+				}
+			}
+		}
+
+		[Test]
         public void DisposeMakesIsCreatedReturnsFalse()
         {
-			NativeLinkedList<int> list = CreateNativeLinkedList(3);
+			NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3);
             bool isDisposed = false;
             try
             {
@@ -2828,7 +5013,37 @@ namespace JacksonDunstan.NativeCollections.Tests
                     list.Dispose();
                 }
             }
-        }
+		}
+
+		[Test]
+		public void DisposeWithoutFullListSafetyCheckBoundsThrowsException()
+		{
+			NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40);
+			list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+			Assert.That(
+				() => list.Dispose(),
+				Throws.TypeOf<IndexOutOfRangeException>());
+			AssertGeneralInvariants(list);
+
+			list.TestUseOnlySetParallelForSafetyCheckRange(0, list.Length);
+			list.Dispose();
+		}
+
+		[Test]
+		public void DisposeWhenReadOnlyThrowsException()
+		{
+			NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30, 40);
+			list.TestUseOnlySetAllowReadAndWriteAccess(false);
+
+			AssertRequiresReadOrWriteAccess(
+				list,
+				() => list.Dispose());
+			AssertGeneralInvariants(list);
+
+			list.TestUseOnlySetAllowReadAndWriteAccess(true);
+			list.Dispose();
+		}
 
 		private struct TestJob : IJob
 		{
