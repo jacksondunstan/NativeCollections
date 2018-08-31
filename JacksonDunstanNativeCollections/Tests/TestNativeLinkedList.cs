@@ -14,10 +14,10 @@ using Unity.Jobs;
 
 namespace JacksonDunstan.NativeCollections.Tests
 {
-    /// <summary>
-    /// Unit tests for <see cref="NativeLinkedList{T}"/> and
+	/// <summary>
+	/// Unit tests for <see cref="NativeLinkedList{T}"/> and
 	/// <see cref="NativeLinkedList{T}.Enumerator"/>
-    /// </summary>
+	/// </summary>
     public class TestNativeLinkedList
     {
 		struct NonBlittableStruct
