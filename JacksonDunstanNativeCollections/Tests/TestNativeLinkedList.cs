@@ -245,6 +245,14 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
+		public void EmptyConstructorThrowsExceptionForInvalidAllocator()
+		{
+			Assert.That(
+				() => new NativeLinkedList<int>(4, Allocator.None),
+				Throws.TypeOf<ArgumentException>());
+		}
+
+		[Test]
 		public void DefaultValuesConstructorEnforcesMinimumCapacityAndLength()
 		{
 			using (NativeLinkedList<int> list = new NativeLinkedList<int>(
@@ -278,6 +286,14 @@ namespace JacksonDunstan.NativeCollections.Tests
 		{
 			Assert.That(
 				() => new NativeLinkedList<NonBlittableStruct>(6, 4, Allocator.Temp),
+				Throws.TypeOf<ArgumentException>());
+		}
+
+		[Test]
+		public void DefaultValuesConstructorThrowsExceptionForInvalidAllocator()
+		{
+			Assert.That(
+				() => new NativeLinkedList<int>(4, 4, Allocator.None),
 				Throws.TypeOf<ArgumentException>());
 		}
 
@@ -2876,6 +2892,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					AssertRequiresReadOrWriteAccess(
 						eB,
 						() => isEqual = eB == listA.Head);
+					Assert.That(isEqual, Is.False);
 					AssertGeneralInvariants(listA);
 					AssertGeneralInvariants(listB);
 				}
@@ -2973,6 +2990,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					AssertRequiresReadOrWriteAccess(
 						eB,
 						() => isEqual = eB.Equals((object)listA.Head));
+					Assert.That(isEqual, Is.False);
 					AssertGeneralInvariants(listA);
 					AssertGeneralInvariants(listB);
 				}
@@ -3057,6 +3075,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					AssertRequiresReadOrWriteAccess(
 						eB,
 						() => isEqual = eB.Equals(listA.Head));
+					Assert.That(isEqual, Is.False);
 					AssertGeneralInvariants(listA);
 					AssertGeneralInvariants(listB);
 				}
@@ -3141,6 +3160,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					AssertRequiresReadOrWriteAccess(
 						eB,
 						() => isNotEqual = eB != listA.Head);
+					Assert.That(isNotEqual, Is.False);
 					AssertGeneralInvariants(listA);
 					AssertGeneralInvariants(listB);
 				}

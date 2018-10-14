@@ -938,10 +938,18 @@ namespace JacksonDunstan.NativeCollections
 		/// </param>
 		/// 
 		/// <param name="allocator">
-		/// Allocator to allocate unmanaged memory with
+		/// Allocator to allocate unmanaged memory with. Must be valid.
 		/// </param>
 		public NativeLinkedList(int capacity, Allocator allocator)
 		{
+			// Require a valid allocator
+			if (allocator <= Allocator.None)
+			{
+				throw new ArgumentException(
+					"Allocator must be Temp, TempJob or Persistent",
+					"allocator");
+			}
+
 			RequireBlittable();
 
 			// Insist on a minimum capacity
@@ -1018,10 +1026,18 @@ namespace JacksonDunstan.NativeCollections
 		/// </param>
 		/// 
 		/// <param name="allocator">
-		/// Allocator to allocate unmanaged memory with
+		/// Allocator to allocate unmanaged memory with. Must be valid.
 		/// </param>
 		public NativeLinkedList(int capacity, int length, Allocator allocator)
 		{
+			// Require a valid allocator
+			if (allocator <= Allocator.None)
+			{
+				throw new ArgumentException(
+					"Allocator must be Temp, TempJob or Persistent",
+					"allocator");
+			}
+
 			RequireBlittable();
 
 			// Insist on a non-negative length
