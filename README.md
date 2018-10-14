@@ -8,7 +8,7 @@ Clone or download this repository and copy the `JacksonDunstanNativeCollections`
 
 # NativeLinkedList<T>
 
-The only collection type available so far is `NativeLinkedList<T>`. Here's how to use it:
+This is a doubly-linked list backed by parallel arrays. Here's how to use it:
 
 ```csharp
 // Create an empty list with capacity for five nodes
@@ -49,6 +49,36 @@ list.Dispose();
 There is much more functionality available. See [the source](JacksonDunstanNativeCollections/NativeLinkedList.cs) for more.
 
 To read about the making of this type, see this [article series](https://jacksondunstan.com/articles/4865).
+
+# NativeIntPtr and NativeLongPtr
+
+These are pointeres to a single `int` or `long`, useful for counters among other purposes. Here's how to use `NativeIntPtr` (`NativeLongPtr` is identical):
+
+```csharp
+// Construct with the zero value
+NativeIntPtr intPtr0 = new NativeIntPtr(Allocator.Temp);
+
+// Construct with a custom value
+NativeIntPtr intPtr = new NativeIntPtr(Allocator.Temp, 123);
+
+// Read and write the value
+intPtr.Value = 20;
+Debug.Log("Value: " + intPtr.Value); // prints "Value: 20"
+
+// Get a Parallel for use in an IJobParallelFor
+NativeIntPtr.Parallel parallel = intPtr.GetParallel();
+
+// Perform atomic writes on it
+parallel.Increment();
+parallel.Decrement();
+parallel.Add(100);
+
+// Dispose the native memory
+intPtr0.Dispose();
+intPtr.Dispose();
+```
+
+To read about the making of this type, see this [article](https://jacksondunstan.com/articles/4940).
 
 # License
 
