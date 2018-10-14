@@ -1422,7 +1422,6 @@ namespace JacksonDunstan.NativeCollections
 			m_State->m_NextIndexes[endIndex] = insertNextIndex;
 
 			// Point the end node's previous to the insert node
-			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
 			m_State->m_PrevIndexes[endIndex] = enumerator.m_Index;
 
 			// Point the insert node's next to the end node
@@ -1542,7 +1541,6 @@ namespace JacksonDunstan.NativeCollections
 			m_State->m_NextIndexes[copiedTailIndex] = insertNextIndex;
 
 			// Point the inserted head node's previous to the insert node
-			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
 			m_State->m_PrevIndexes[copiedHeadIndex] = enumerator.m_Index;
 
 			// Point the insert node's next to the inserted head node
@@ -1654,7 +1652,6 @@ namespace JacksonDunstan.NativeCollections
 			m_State->m_NextIndexes[copiedTailIndex] = insertNextIndex;
 
 			// Point the inserted head node's previous to the insert node
-			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
 			m_State->m_PrevIndexes[copiedHeadIndex] = enumerator.m_Index;
 
 			// Point the insert node's next to the inserted head node
@@ -1763,7 +1760,6 @@ namespace JacksonDunstan.NativeCollections
 			m_State->m_NextIndexes[copiedTailIndex] = insertNextIndex;
 
 			// Point the inserted head node's previous to the insert node
-			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
 			m_State->m_PrevIndexes[copiedHeadIndex] = enumerator.m_Index;
 
 			// Point the insert node's next to the inserted head node
@@ -1892,7 +1888,6 @@ namespace JacksonDunstan.NativeCollections
 			m_State->m_NextIndexes[copiedTailIndex] = insertNextIndex;
 
 			// Point the inserted head node's previous to the insert node
-			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
 			m_State->m_PrevIndexes[copiedHeadIndex] = enumerator.m_Index;
 
 			// Point the insert node's next to the inserted head node
@@ -2027,7 +2022,6 @@ namespace JacksonDunstan.NativeCollections
 			m_State->m_NextIndexes[copiedTailIndex] = insertNextIndex;
 
 			// Point the inserted head node's previous to the insert node
-			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
 			m_State->m_PrevIndexes[copiedHeadIndex] = enumerator.m_Index;
 
 			// Point the insert node's next to the inserted head node
@@ -2163,7 +2157,6 @@ namespace JacksonDunstan.NativeCollections
 			m_State->m_NextIndexes[copiedTailIndex] = insertNextIndex;
 
 			// Point the inserted head node's previous to the insert node
-			int insertPrevIndex = m_State->m_PrevIndexes[enumerator.m_Index];
 			m_State->m_PrevIndexes[copiedHeadIndex] = enumerator.m_Index;
 
 			// Point the insert node's next to the inserted head node
@@ -2276,7 +2269,6 @@ namespace JacksonDunstan.NativeCollections
 			UnsafeUtility.WriteArrayElement(m_State->m_Values, endIndex, value);
 
 			// Point the end node's next to the insert node
-			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
 			m_State->m_NextIndexes[endIndex] = enumerator.m_Index;
 
 			// Point the end node's previous to the prev node
@@ -2390,7 +2382,6 @@ namespace JacksonDunstan.NativeCollections
 			CopyToEnd(list, out copiedHeadIndex, out copiedTailIndex);
 
 			// Point the inserted tail node's next to the insert node
-			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
 			m_State->m_NextIndexes[copiedTailIndex] = enumerator.m_Index;
 
 			// Point the inserted head node's previous to the prev node
@@ -2502,7 +2493,6 @@ namespace JacksonDunstan.NativeCollections
 			CopyToEnd(array, out copiedHeadIndex, out copiedTailIndex);
 
 			// Point the inserted tail node's next to the insert node
-			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
 			m_State->m_NextIndexes[copiedTailIndex] = enumerator.m_Index;
 
 			// Point the inserted head node's previous to the prev node
@@ -2611,7 +2601,6 @@ namespace JacksonDunstan.NativeCollections
 			CopyToEnd(array, out copiedHeadIndex, out copiedTailIndex);
 
 			// Point the inserted tail node's next to the insert node
-			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
 			m_State->m_NextIndexes[copiedTailIndex] = enumerator.m_Index;
 
 			// Point the inserted head node's previous to the prev node
@@ -2741,7 +2730,6 @@ namespace JacksonDunstan.NativeCollections
 			CopyToEnd(start, end, out copiedHeadIndex, out copiedTailIndex);
 
 			// Point the inserted tail node's next to the insert node
-			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
 			m_State->m_NextIndexes[copiedTailIndex] = enumerator.m_Index;
 
 			// Point the inserted head node's previous to the prev node
@@ -2876,7 +2864,6 @@ namespace JacksonDunstan.NativeCollections
 				out copiedTailIndex);
 
 			// Point the inserted tail node's next to the insert node
-			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
 			m_State->m_NextIndexes[copiedTailIndex] = enumerator.m_Index;
 
 			// Point the inserted head node's previous to the prev node
@@ -3012,7 +2999,6 @@ namespace JacksonDunstan.NativeCollections
 				out copiedTailIndex);
 
 			// Point the inserted tail node's next to the insert node
-			int insertNextIndex = m_State->m_NextIndexes[enumerator.m_Index];
 			m_State->m_NextIndexes[copiedTailIndex] = enumerator.m_Index;
 
 			// Point the inserted head node's previous to the prev node
