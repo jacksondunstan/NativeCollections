@@ -215,7 +215,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void ParallelForJobCanIterateOverLinkedList()
+		public void ParallelForJobCanUseParallelPtr()
 		{
 			using (NativeArray<long> array = new NativeArray<long>(
 				3,
