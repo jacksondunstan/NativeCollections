@@ -87,6 +87,7 @@ namespace JacksonDunstan.NativeCollections
 			internal Parallel(long* value)
 			{
 				m_Buffer = value;
+				m_ThreadIndex = 0;
 			}
 #endif
 
