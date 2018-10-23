@@ -267,7 +267,34 @@ public class PerformanceTest : MonoBehaviour
 		}
 	}
 
+	// NativeIntPtr and NativePerJobThreadIntPtr jobs
+
+	[BurstCompile]
+	struct NativeIntPtrParallelJob : IJobParallelFor
+	{
+		public NativeArray<int> Array;
+		public NativeIntPtr.Parallel Sum;
+
+		public void Execute(int index)
+		{
+			Sum.Add(Array[index]);
+		}
+	}
+
+	[BurstCompile]
+	struct NativePerJobThreadIntPtrParallelJob : IJobParallelFor
+	{
+		public NativeArray<int> Array;
+		public NativePerJobThreadIntPtr.Parallel Sum;
+
+		public void Execute(int index)
+		{
+			Sum.Add(Array[index]);
+		}
+	}
+
 	// Run the test
+
 	void Start()
 	{
 		const int size = 10000;
@@ -282,6 +309,9 @@ public class PerformanceTest : MonoBehaviour
 			Allocator.Temp);
 		NativeLinkedList<int> linkedList = new NativeLinkedList<int>(
 			size,
+			Allocator.Temp);
+		NativeIntPtr nativeIntPtr = new NativeIntPtr(Allocator.Temp);
+		NativePerJobThreadIntPtr nativePerJobThreadIntPtr = new NativePerJobThreadIntPtr(
 			Allocator.Temp);
 
 		// Create jobs
@@ -354,6 +384,16 @@ public class PerformanceTest : MonoBehaviour
 			LinkedList = linkedList,
 			NumElementsToRemove = size
 		};
+		NativeIntPtrParallelJob nativeIntPtrParallelJob = new NativeIntPtrParallelJob
+		{
+			Array = array,
+			Sum = nativeIntPtr.GetParallel()
+		};
+		NativePerJobThreadIntPtrParallelJob nativePerJobThreadIntPtrParallelJob = new NativePerJobThreadIntPtrParallelJob
+		{
+			Array = array,
+			Sum = nativePerJobThreadIntPtr.GetParallel()
+		};
 
 		// Warm up the job system
 		arraySetJob.Run();
@@ -372,6 +412,8 @@ public class PerformanceTest : MonoBehaviour
 		arrayRemoveJob.Run();
 		listRemoveJob.Run();
 		linkedListRemoveJob.Run();
+		nativeIntPtrParallelJob.Run(array.Length);
+		nativePerJobThreadIntPtrParallelJob.Run(array.Length);
 
 		// Run initialize jobs
 
@@ -472,11 +514,25 @@ public class PerformanceTest : MonoBehaviour
 		linkedListRemoveJob.Run();
 		long linkedListRemoveTicks = sw.ElapsedTicks;
 
+		// Run NativeIntPtr and NativePerJobThreadIntPtr jobs
+
+		sw.Reset();
+		sw.Start();
+		nativeIntPtrParallelJob.Run(array.Length);
+		long nativeIntPtrTicks = sw.ElapsedTicks;
+
+		sw.Reset();
+		sw.Start();
+		nativePerJobThreadIntPtrParallelJob.Run(array.Length);
+		long nativePerJobThreadIntPtrTicks = sw.ElapsedTicks;
+
 		// Dispose native collections
 		sum.Dispose();
 		array.Dispose();
 		list.Dispose();
 		linkedList.Dispose();
+		nativeIntPtr.Dispose();
+		nativePerJobThreadIntPtr.Dispose();
 
 		// Report results
 		Debug.Log(
@@ -486,6 +542,9 @@ public class PerformanceTest : MonoBehaviour
 			"Iterate,ParallelFor," + arrayIterateParallelForTicks + ","     + "n/a"                             + "," + linkedListIterateParallelForTicks + "\n" +
 			"Insert,Single,"       + arrayInsertTicks             + ","     + listInsertTicks                   + "," + linkedListInsertTicks             + "\n" +
 			"Remove,Single,"       + arrayRemoveTicks             + ","     + listRemoveTicks                   + "," + linkedListRemoveTicks);
+		Debug.Log(
+			"Operation,Job Type,NativeIntPtr,NativePerJobThreadIntPtr\n" +
+			"Sum,ParallelFor," + nativeIntPtrTicks + "," + nativePerJobThreadIntPtrTicks);
 
 		// Quit
 #if UNITY_EDITOR
