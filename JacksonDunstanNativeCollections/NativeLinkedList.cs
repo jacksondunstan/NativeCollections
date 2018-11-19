@@ -4684,11 +4684,12 @@ namespace JacksonDunstan.NativeCollections
 					"Invalid range start index (" + startIndex + ") " +
 					"specified. Range start indices must be non-negative.");
 			}
-			if (startIndex + length >= array.Length)
+			if (startIndex + length > array.Length)
 			{
 				throw new IndexOutOfRangeException(
-					"Invalid range end index (" + (startIndex + length) + ") " +
-					"specified. Range start indices must be non-negative.");
+					"Invalid range end index (" + (startIndex + length - 1) + ") " +
+					"specified for array with length (" + array.Length + ")." +
+					"Range end indices must be less than the array length.");
 			}
 #endif
 		}
@@ -4729,11 +4730,12 @@ namespace JacksonDunstan.NativeCollections
 					"Invalid range start index (" + startIndex + ") " +
 					"specified. Range start indices must be non-negative.");
 			}
-			if (startIndex + length >= array.Length)
+			if (startIndex + length > array.Length)
 			{
 				throw new IndexOutOfRangeException(
-					"Invalid range end index (" + (startIndex + length) + ") " +
-					"specified. Range start indices must be non-negative.");
+					"Invalid range end index (" + (startIndex + length - 1) + ") " +
+					"specified for array with length (" + array.Length + ")." +
+					"Range end indices must be less than the array length.");
 			}
 #endif
 		}
