@@ -50,6 +50,50 @@ There is much more functionality available. See [the source](JacksonDunstanNativ
 
 To read about the making of this type, see this [article series](https://jacksondunstan.com/articles/4865).
 
+# NativeChunkedList<T>
+
+This is a dynamically-resizable list backed by arrays that store "chunks" of elements and an array of pointers to those chunks. Here's how to use it:
+
+```csharp
+// Create an empty list with capacity for 4096 elements in 1024 element chunks
+NativeChunkedList<int> list = new NativeChunkedList<int>(
+	1024,
+	4096,
+	Allocator.Temp);
+
+// Add some elements to the list
+list.Add(10);
+list.Add(20);
+list.Add(30);
+list.Add(40);
+list.Add(50);
+
+// Iterate over the list
+foreach (int val in list)
+{
+	Debug.Log(val);
+}
+
+// Remove an element from the middle
+list.RemoveAt(2);
+
+// Insert an element into the middle
+list.Insert(1, 15);
+
+// Access the elements sequentially
+for (int i = 0; i < list.Length; ++i)
+{
+	Debug.Log(list[i]);
+}
+
+// Dispose the list's native memory
+list.Dispose();
+```
+
+There is much more functionality available. See [the source](JacksonDunstanNativeCollections/NativeChunkedList.cs) for more.
+
+To read about the making of this type, see this [article](https://jacksondunstan.com/articles/4863).
+
 # NativeIntPtr and NativeLongPtr
 
 These are pointeres to a single `int` or `long`, useful for counters among other purposes. Here's how to use `NativeIntPtr` (`NativeLongPtr` is identical):
