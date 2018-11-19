@@ -5013,7 +5013,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
-		public void DisposeMakesIsCreatedReturnsFalse()
+		public void DisposeMakesIsCreatedReturnFalse()
 		{
 			NativeLinkedList<int> list = CreateEmptyNativeLinkedList(3);
 			bool isDisposed = false;
