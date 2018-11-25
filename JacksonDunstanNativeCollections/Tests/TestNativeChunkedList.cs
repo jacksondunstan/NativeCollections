@@ -9,7 +9,7 @@ using Unity.Collections;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
+using Unity.Jobs;
 
 namespace JacksonDunstan.NativeCollections.Tests
 {
@@ -25,11 +25,11 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		private static NativeChunkedList<int> CreateList(
-			int numElementsPerChunk,
+			int chunkLength,
 			int capacity)
 		{
 			return new NativeChunkedList<int>(
-				numElementsPerChunk,
+				chunkLength,
 				capacity,
 				Allocator.Temp);
 		}
@@ -86,6 +86,40 @@ namespace JacksonDunstan.NativeCollections.Tests
 			}
 		}
 
+		private static void AssertRequiresReadOrWriteAccess(
+			NativeChunkedList<int>.ChunksEnumerator enumerator,
+			Action action)
+		{
+			enumerator.TestUseOnlySetAllowReadAndWriteAccess(false);
+			try
+			{
+				Assert.That(
+					() => action(),
+					Throws.TypeOf<InvalidOperationException>());
+			}
+			finally
+			{
+				enumerator.TestUseOnlySetAllowReadAndWriteAccess(true);
+			}
+		}
+
+		private static void AssertRequiresReadOrWriteAccess(
+			NativeChunkedList<int>.ChunkEnumerator enumerator,
+			Action action)
+		{
+			enumerator.TestUseOnlySetAllowReadAndWriteAccess(false);
+			try
+			{
+				Assert.That(
+					() => action(),
+					Throws.TypeOf<InvalidOperationException>());
+			}
+			finally
+			{
+				enumerator.TestUseOnlySetAllowReadAndWriteAccess(true);
+			}
+		}
+
 		private static void AssertRequiresFullListAccess(
 			NativeChunkedList<int> list,
 			Action<NativeChunkedList<int>> action)
@@ -105,6 +139,34 @@ namespace JacksonDunstan.NativeCollections.Tests
 			list.TestUseOnlySetParallelForSafetyCheckRange(minIndex, maxIndex);
 			Assert.That(
 				() => action(list),
+				Throws.TypeOf<IndexOutOfRangeException>());
+		}
+
+		private static void AssertRequiresIndexInSafetyRange(
+			NativeChunkedList<int>.Enumerator enumerator,
+			int minIndex,
+			int maxIndex,
+			Action<NativeChunkedList<int>.Enumerator> action)
+		{
+			enumerator.TestUseOnlySetParallelForSafetyCheckRange(
+				minIndex,
+				maxIndex);
+			Assert.That(
+				() => action(enumerator),
+				Throws.TypeOf<IndexOutOfRangeException>());
+		}
+
+		private static void AssertRequiresIndexInSafetyRange(
+			NativeChunkedList<int>.ChunkEnumerator enumerator,
+			int minIndex,
+			int maxIndex,
+			Action<NativeChunkedList<int>.ChunkEnumerator> action)
+		{
+			enumerator.TestUseOnlySetParallelForSafetyCheckRange(
+				minIndex,
+				maxIndex);
+			Assert.That(
+				() => action(enumerator),
 				Throws.TypeOf<IndexOutOfRangeException>());
 		}
 
@@ -1504,6 +1566,1263 @@ namespace JacksonDunstan.NativeCollections.Tests
 				AssertRequiresFullListAccess(
 					list,
 					copy => copy.Dispose());
+			}
+		}
+
+		[Test]
+		public void ChunksGetReturnsManuallyUsableEnumerable()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				chunkEnumerable = chunksEnumerator.Current;
+				chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(30));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(40));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunksGetReturnsForeachUsableEnumerable()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+
+				int index = 0;
+				foreach (NativeChunkedList<int>.ChunkEnumerable e in list.Chunks)
+				{
+					foreach (int element in e)
+					{
+						Assert.That(element, Is.EqualTo((index + 1) * 10));
+						index++;
+					}
+				}
+				Assert.That(index, Is.EqualTo(4));
+			}
+		}
+
+		[Test]
+		public void GetChunksEnumerableEnumeratesSingleChunkRange()
+		{
+			using (NativeChunkedList<int> list = CreateList(4, 4))
+			{
+				AddElements(list, 10, 20, 30, 40, 50, 60, 70, 80);
+
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.GetChunksEnumerable(5, 7);
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(60));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(70));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void GetChunksEnumerableEnumeratesTwoChunkRange()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40, 50);
+
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.GetChunksEnumerable(1, 4);
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				chunkEnumerable = chunksEnumerator.Current;
+				chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(30));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(40));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void GetChunksEnumerableEnumeratesMultiChunkRange()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40, 50, 60, 70, 80, 90);
+
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.GetChunksEnumerable(1, 7);
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				chunkEnumerable = chunksEnumerator.Current;
+				chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(30));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(40));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				chunkEnumerable = chunksEnumerator.Current;
+				chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(50));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(60));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				chunkEnumerable = chunksEnumerator.Current;
+				chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(70));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void GetChunksEnumerableRequiresReadAccess()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.GetChunksEnumerable(1, 7));
+			}
+		}
+
+		[Test]
+		public void GetChunksEnumerableRequiresNonNegativeStartIndex()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				Assert.That(
+					() => list.GetChunksEnumerable(-1, 7),
+					Throws.TypeOf<IndexOutOfRangeException>());
+			}
+		}
+
+		[Test]
+		public void GetChunksEnumerableRequiresEndIndexLessOrEqualToThanLength()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				Assert.That(
+					() => list.GetChunksEnumerable(1, 5),
+					Throws.TypeOf<IndexOutOfRangeException>());
+			}
+		}
+
+		[Test]
+		public void GetChunksEnumerableRequiresStartIndexLessThanEndIndex()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				Assert.That(
+					() => list.GetChunksEnumerable(2, 1),
+					Throws.TypeOf<IndexOutOfRangeException>());
+			}
+		}
+
+		[Test]
+		public void EnumeratorMoveNextAdvancesToNextElement()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(e.Current, Is.EqualTo(10));
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(e.Current, Is.EqualTo(20));
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(e.Current, Is.EqualTo(30));
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(e.Current, Is.EqualTo(40));
+
+				Assert.That(e.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void EnumeratorMoveNextRequiresReadAccess()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => e.MoveNext()
+				);
+			}
+		}
+
+		[Test]
+		public void EnumeratorResetMovesToBeforeElements()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+				e.MoveNext();
+
+				e.Reset();
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(e.Current, Is.EqualTo(10));
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(e.Current, Is.EqualTo(20));
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(e.Current, Is.EqualTo(30));
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(e.Current, Is.EqualTo(40));
+
+				Assert.That(e.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void EnumeratorCurrentGetReturnsCurrentValue()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(e.Current, Is.EqualTo(10));
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(e.Current, Is.EqualTo(20));
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(e.Current, Is.EqualTo(30));
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(e.Current, Is.EqualTo(40));
+
+				Assert.That(e.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void EnumeratorCurrentGetRequiresReadAccess()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+
+				int val = 0;
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => val = e.Current
+				);
+			}
+		}
+
+		[Test]
+		public void EnumeratorCurrentGetRequiresElementIndexInSafetyRange()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+
+				int val = 0;
+				AssertRequiresIndexInSafetyRange(
+					e,
+					1,
+					1,
+					copy => val = copy.Current
+				);
+			}
+		}
+
+		[Test]
+		public void EnumeratorCurrentGetIEnumeratorReturnsCurrentValue()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(((IEnumerator)e).Current, Is.EqualTo(10));
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(((IEnumerator)e).Current, Is.EqualTo(20));
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(((IEnumerator)e).Current, Is.EqualTo(30));
+
+				Assert.That(e.MoveNext(), Is.True);
+				Assert.That(((IEnumerator)e).Current, Is.EqualTo(40));
+
+				Assert.That(e.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void EnumeratorCurrentGetIEnumeratorRequiresReadAccess()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+
+				object val = 0;
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => val = ((IEnumerator)e).Current
+				);
+			}
+		}
+
+		[Test]
+		public void EnumeratorCurrentGetIEnumeratorRequiresElementIndexInSafetyRange()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+
+				object val = 0;
+				AssertRequiresIndexInSafetyRange(
+					e,
+					1,
+					1,
+					copy => val = ((IEnumerator)copy).Current
+				);
+			}
+		}
+
+		[Test]
+		public void EnumeratorCurrentSetWritesElementValue()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+				e.MoveNext();
+
+				e.Current = 100;
+
+				AssertElements(list, 100, 20, 30, 40);
+			}
+		}
+
+		[Test]
+		public void EnumeratorCurrentSetRequiresWriteAccess()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+
+				AssertRequiresReadOrWriteAccess(
+					e,
+					() => e.Current = 100
+				);
+			}
+		}
+
+		[Test]
+		public void EnumeratorCurrentSetRequiresWriteAccessToCurrentElement()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+
+				AssertRequiresIndexInSafetyRange(
+					e,
+					1,
+					1,
+					copy => copy.Current = 100
+				);
+			}
+		}
+
+		[Test]
+		public void EnumeratorDisposeDoesNotThrowException()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.Enumerator e = list.GetEnumerator();
+
+				Assert.That(() => e.Dispose(), Throws.Nothing);
+			}
+		}
+
+		[Test]
+		public void ChunksEnumerableGetEnumeratorReturnsEnumeratorForChunk()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunksEnumerableGetEnumeratorIEnumerableReturnsEnumeratorForChunk()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+
+				IEnumerator chunksEnumerator = ((IEnumerable)chunksEnumerable).GetEnumerator();
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = (NativeChunkedList<int>.ChunkEnumerable)chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunksEnumerableDisposeDoesNotThrowException()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable e = list.Chunks;
+
+				Assert.That(() => e.Dispose(), Throws.Nothing);
+			}
+		}
+
+		[Test]
+		public void ChunksEnumeratorMoveNextMovesToNextChunk()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+
+				chunkEnumerable = chunksEnumerator.Current;
+				chunkEnumerator = chunkEnumerable.GetEnumerator();
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(30));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(40));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunksEnumeratorMoveNextRequiresReadAccess()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				AssertRequiresReadOrWriteAccess(
+					chunksEnumerator,
+					() => chunksEnumerator.MoveNext());
+			}
+		}
+
+		[Test]
+		public void ChunksEnumeratorCurrentGetReturnsEnumerableForCurrentChunk()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+
+				chunkEnumerable = chunksEnumerator.Current;
+				chunkEnumerator = chunkEnumerable.GetEnumerator();
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(30));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(40));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunksEnumeratorCurrentGetRequiresReadAccess()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable;
+				AssertRequiresReadOrWriteAccess(
+					chunksEnumerator,
+					() => chunkEnumerable = chunksEnumerator.Current);
+			}
+		}
+
+		[Test]
+		public void ChunksEnumeratorCurrentGetIEnumeratorTReturnsEnumerableForCurrentChunk()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = (NativeChunkedList<int>.ChunkEnumerable)((IEnumerator<IEnumerable<int>>)chunksEnumerator).Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+
+				chunkEnumerable = (NativeChunkedList<int>.ChunkEnumerable)((IEnumerator<IEnumerable<int>>)chunksEnumerator).Current;
+				chunkEnumerator = chunkEnumerable.GetEnumerator();
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(30));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(40));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunksEnumeratorCurrentGetIEnumeratorTRequiresReadAccess()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				object chunkEnumerable;
+				AssertRequiresReadOrWriteAccess(
+					chunksEnumerator,
+					() => chunkEnumerable = (NativeChunkedList<int>.ChunkEnumerable)((IEnumerator<IEnumerable<int>>)chunksEnumerator).Current);
+			}
+		}
+
+		[Test]
+		public void ChunksEnumeratorCurrentGetIEnumeratorReturnsEnumerableForCurrentChunk()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = (NativeChunkedList<int>.ChunkEnumerable)((IEnumerator)chunksEnumerator).Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+
+				chunkEnumerable = (NativeChunkedList<int>.ChunkEnumerable)((IEnumerator)chunksEnumerator).Current;
+				chunkEnumerator = chunkEnumerable.GetEnumerator();
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(30));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(40));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunksEnumeratorCurrentGetIEnumeratorRequiresReadAccess()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				object chunkEnumerable;
+				AssertRequiresReadOrWriteAccess(
+					chunksEnumerator,
+					() => chunkEnumerable = ((IEnumerator)chunksEnumerator).Current);
+			}
+		}
+
+		[Test]
+		public void ChunksEnumeratorResetMovesToBeforeChunks()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+
+				chunksEnumerator.Reset();
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+
+				chunkEnumerable = chunksEnumerator.Current;
+				chunkEnumerator = chunkEnumerable.GetEnumerator();
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(30));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(40));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+
+				Assert.That(chunksEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunksEnumeratorDisposeDoesNotThrowException()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+
+				Assert.That(() => chunksEnumerator.Dispose(), Throws.Nothing);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumerableGetEnumeratorReturnsEnumeratorForCurrentChunk()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumerableGetEnumeratorIEnumerableTReturnsEnumeratorForCurrentChunk()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+
+				IEnumerator<int> chunkEnumerator = ((IEnumerable<int>)chunkEnumerable).GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumerableGetEnumeratorIEnumerableReturnsEnumeratorForCurrentChunk()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = (NativeChunkedList<int>.ChunkEnumerator)((IEnumerable)chunkEnumerable).GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumerableDisposeDoesNotThrowException()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+
+				Assert.That(() => chunkEnumerable.Dispose(), Throws.Nothing);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumeratorMoveNextAdvancesToNextElement()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumeratorCurrentGetReturnsCurrentElement()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(chunkEnumerator.Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumeratorCurrentGetRequiresReadAccess()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+
+				int val;
+				AssertRequiresReadOrWriteAccess(
+					chunkEnumerator,
+					() => val = chunkEnumerator.Current);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumeratorCurrentGetRequiresElementInSafetyRange()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+
+				int val;
+				AssertRequiresIndexInSafetyRange(
+					chunkEnumerator,
+					1,
+					1,
+					copy => val = copy.Current);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumeratorCurrentGetIEnumeratorReturnsCurrentElement()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(((IEnumerator)chunkEnumerator).Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(((IEnumerator)chunkEnumerator).Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumeratorCurrentGetIEnumeratorRequiresReadAccess()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+
+				object val;
+				AssertRequiresReadOrWriteAccess(
+					chunkEnumerator,
+					() => val = ((IEnumerator)chunkEnumerator).Current);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumeratorCurrentGetIEnumeratorRequiresElementInSafetyRange()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+
+				object val;
+				AssertRequiresIndexInSafetyRange(
+					chunkEnumerator,
+					1,
+					1,
+					copy => val = ((IEnumerator)copy).Current);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumeratorResetMovesToBeforeFirstElement()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+
+				chunkEnumerator.Reset();
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(((IEnumerator)chunkEnumerator).Current, Is.EqualTo(10));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.True);
+				Assert.That(((IEnumerator)chunkEnumerator).Current, Is.EqualTo(20));
+
+				Assert.That(chunkEnumerator.MoveNext(), Is.False);
+			}
+		}
+
+		[Test]
+		public void ChunkEnumeratorDisposeDoesNotThrowException()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+				NativeChunkedList<int>.ChunksEnumerable chunksEnumerable = list.Chunks;
+				NativeChunkedList<int>.ChunksEnumerator chunksEnumerator = chunksEnumerable.GetEnumerator();
+				Assert.That(chunksEnumerator.MoveNext(), Is.True);
+				NativeChunkedList<int>.ChunkEnumerable chunkEnumerable = chunksEnumerator.Current;
+				NativeChunkedList<int>.ChunkEnumerator chunkEnumerator = chunkEnumerable.GetEnumerator();
+
+				Assert.That(() => chunkEnumerator.Dispose(), Throws.Nothing);
+			}
+		}
+
+		public struct TestJob : IJob
+		{
+			public NativeChunkedList<int> List;
+			public NativeArray<int> Sum;
+
+			public void Execute()
+			{
+				for (int i = 0; i < List.Length; ++i)
+				{
+					Sum[0] += List[i];
+				}
+			}
+		}
+
+		[Test]
+		public void IsUsableWithinJob()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+
+				using (NativeArray<int> sum = new NativeArray<int>(
+					1,
+					Allocator.Temp))
+				{
+					new TestJob { List = list, Sum = sum }.Run();
+
+					Assert.That(sum[0], Is.EqualTo(100));
+				}
+			}
+		}
+
+		public struct TestParallelForJob : IJobParallelFor
+		{
+			public NativeChunkedList<int> List;
+			public NativeArray<int> Sum;
+
+			public void Execute(int index)
+			{
+				Sum[0] += List[index];
+			}
+		}
+
+		[Test]
+		public void IsUsableWithinParallelForJob()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				AddElements(list, 10, 20, 30, 40);
+
+				using (NativeArray<int> sum = new NativeArray<int>(
+					1,
+					Allocator.Temp))
+				{
+					new TestParallelForJob {
+						List = list,
+						Sum = sum }.Run(list.Length);
+
+					Assert.That(sum[0], Is.EqualTo(100));
+				}
+			}
+		}
+
+		public struct TestParallelForRangedJob : IJobParallelForRanged
+		{
+			public NativeChunkedList<int> List;
+			public NativePerJobThreadIntPtr.Parallel Sum;
+
+			public void Execute(int startIndex, int endIndex)
+			{
+				foreach (NativeChunkedList<int>.ChunkEnumerable e
+					in List.GetChunksEnumerable(startIndex, endIndex))
+				{
+					foreach (int val in e)
+					{
+						Sum.Add(val);
+					}
+				}
+			}
+		}
+
+		[Test]
+		public void IsUsableWithinParallelForRangedJobRun()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				int expectedSum = 0;
+				for (int i = 0; i < 100; ++i)
+				{
+					list.Add(i);
+					expectedSum += i;
+				}
+
+				using (NativePerJobThreadIntPtr sum = new NativePerJobThreadIntPtr(
+					Allocator.Temp))
+				{
+					new TestParallelForRangedJob
+					{
+						List = list,
+						Sum = sum.GetParallel()
+					}.RunRanged(list.Length);
+
+					Assert.That(sum.Value, Is.EqualTo(expectedSum));
+				}
+			}
+		}
+
+		[Test]
+		public void IsUsableWithinParallelForRangedJobSchedule()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				int expectedSum = 0;
+				for (int i = 0; i < 30; ++i)
+				{
+					list.Add(i);
+					expectedSum += i;
+				}
+
+				using (NativePerJobThreadIntPtr sum = new NativePerJobThreadIntPtr(
+					Allocator.Temp))
+				{
+					JobHandle handle = new TestParallelForRangedJob
+					{
+						List = list,
+						Sum = sum.GetParallel()
+					}.ScheduleRanged(list.Length, 16);
+					JobHandle.ScheduleBatchedJobs();
+					handle.Complete();
+
+					Assert.That(sum.Value, Is.EqualTo(expectedSum));
+				}
+			}
+		}
+
+		public struct TestParallelForRangedJobCounts : IJobParallelForRanged
+		{
+			public NativeChunkedList<int> List;
+			public NativeArray<int> Counts;
+
+			public void Execute(int startIndex, int endIndex)
+			{
+				for (int i = startIndex; i < endIndex; ++i)
+				{
+					Counts[i]++;
+				}
+			}
+		}
+
+		[Test]
+		public void ParallelForJobProcessesEachIndexOnce()
+		{
+			using (NativeChunkedList<int> list = CreateList(2, 4))
+			{
+				int expectedSum = 0;
+				for (int i = 0; i < 100; ++i)
+				{
+					list.Add(i);
+					expectedSum += i;
+				}
+
+				using (NativeArray<int> counts = new NativeArray<int>(
+					list.Length,
+					Allocator.Temp))
+				{
+					JobHandle handle = new TestParallelForRangedJobCounts
+					{
+						List = list,
+						Counts = counts
+					}.ScheduleRanged(list.Length, 16);
+					JobHandle.ScheduleBatchedJobs();
+					handle.Complete();
+
+					for (int i = 0; i < counts.Length; ++i)
+					{
+						Assert.That(counts[i], Is.EqualTo(1));
+					}
+				}
 			}
 		}
 	}

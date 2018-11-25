@@ -81,9 +81,12 @@ list.RemoveAt(2);
 list.Insert(1, 15);
 
 // Access the elements sequentially
-for (int i = 0; i < list.Length; ++i)
+foreach (var e in list.Chunks)
 {
-	Debug.Log(list[i]);
+	foreach (int val in e)
+	{
+		Debug.Log(val);
+	}
 }
 
 // Dispose the list's native memory
@@ -92,11 +95,11 @@ list.Dispose();
 
 There is much more functionality available. See [the source](JacksonDunstanNativeCollections/NativeChunkedList.cs) for more.
 
-To read about the making of this type, see this [article](https://jacksondunstan.com/articles/4863).
+To read about the making of this type, see this [article series](https://jacksondunstan.com/articles/4963).
 
 # NativeIntPtr and NativeLongPtr
 
-These are pointeres to a single `int` or `long`, useful for counters among other purposes. Here's how to use `NativeIntPtr` (`NativeLongPtr` is identical):
+These are pointers to a single `int` or `long`, useful for counters among other purposes. Here's how to use `NativeIntPtr` (`NativeLongPtr` is identical):
 
 ```csharp
 // Construct with the zero value
@@ -123,6 +126,66 @@ intPtr.Dispose();
 ```
 
 To read about the making of this type, see this [article](https://jacksondunstan.com/articles/4940).
+
+# NativePerJobThreadIntPtr and NativePerJobThreadLongPtr
+
+These are pointers to a single `int` or `long`. Compared to `NativeIntPtr` and `NativeLongPtr`, their `Parallel` versions are much faster to use in `ParallelFor` jobs but use more memory. Here's how to use `NativePerJobThreadIntPtr` (`NativePerJobThreadLongPtr` is identical):
+
+```csharp
+// Construct with the zero value
+NativePerJobThreadIntPtr intPtr0 = new NativePerJobThreadIntPtr(Allocator.Temp);
+
+// Construct with a custom value
+NativePerJobThreadIntPtr intPtr = new NativePerJobThreadIntPtr(Allocator.Temp, 123);
+
+// Read and write the value
+intPtr.Value = 20;
+Debug.Log("Value: " + intPtr.Value); // prints "Value: 20"
+
+// Get a Parallel for use in an IJobParallelFor
+NativePerJobThreadIntPtr.Parallel parallel = intPtr.GetParallel();
+
+// Perform atomic writes on it
+parallel.Increment();
+parallel.Decrement();
+parallel.Add(100);
+
+// Dispose the native memory
+intPtr0.Dispose();
+intPtr.Dispose();
+```
+
+To read about the making of this type, see this [article](https://jacksondunstan.com/articles/4942).
+
+# IJobParallelForRanged
+
+This is a job type interface similar to `IJobParallelFor` for job types that want to operate on a range of indices from the batch rather than one index at a time. This is especially useful with `NativeChunkedList<T>` as its enumerable and enumerator types can iterate much more efficiently than with random access via the indexer. Here's how to use this job type interface:
+
+```csharp
+[BurstCompile]
+struct ChunkedListIterateJobParallelFor : IJobParallelForRanged
+{
+	public NativeChunkedList<int> List;
+	public NativePerJobThreadIntPtr.Parallel Sum;
+
+	public void Execute(int startIndex, int endIndex)
+	{
+		for (
+			var chunks = List.GetChunksEnumerable(startIndex, endIndex).GetEnumerator();
+			chunks.MoveNext();)
+		{
+			for (
+				var chunk = chunks.Current.GetEnumerator();
+				chunk.MoveNext();)
+			{
+				Sum.Add(chunk.Current);
+			}
+		}
+	}
+}
+```
+
+To read about the making of this type, see this [article](https://jacksondunstan.com/articles/4976).
 
 # License
 

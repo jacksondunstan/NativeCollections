@@ -908,7 +908,7 @@ namespace JacksonDunstan.NativeCollections
 		/// but set lower by ParallelFor jobs due to specifying
 		/// [NativeContainerSupportsMinMaxWriteRestriction].
 		/// 
-		/// This field must immediately follow <see cref="m_MaxIndex"/>.
+		/// This field must immediately follow <see cref="m_MinIndex"/>.
 		/// </summary>
 		private int m_MaxIndex;
 
@@ -4563,7 +4563,8 @@ namespace JacksonDunstan.NativeCollections
 				throw new IndexOutOfRangeException(
 					"Index " + index + " is out of restricted " +
 					"ParallelFor range [" + m_MinIndex +
-					"..." + m_MaxIndex + "] in ReadWriteBuffer.\n" +
+					"..." + m_MaxIndex + "] with list length " + m_Length +
+					" in ReadWriteBuffer.\n" +
 					"ReadWriteBuffers are restricted to only read and " +
 					"write the node at the job index. You can " +
 					"use double buffering strategies to avoid race " +

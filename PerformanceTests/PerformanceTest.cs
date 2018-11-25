@@ -1,5 +1,4 @@
-﻿using System;
-using UnityEngine;
+﻿using UnityEngine;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Burst;
@@ -111,9 +110,16 @@ public class PerformanceTest : MonoBehaviour
 
 		public void Execute()
 		{
-			for (int i = 0; i < List.Length; ++i)
+			for (
+				var chunks = List.Chunks.GetEnumerator();
+				chunks.MoveNext(); )
 			{
-				Sum[0] += List[i];
+				for (
+					var chunk = chunks.Current.GetEnumerator();
+					chunk.MoveNext(); )
+				{
+					Sum[0] += chunk.Current;
+				}
 			}
 		}
 	}
@@ -145,14 +151,24 @@ public class PerformanceTest : MonoBehaviour
 	}
 
 	[BurstCompile]
-	struct ChunkedListIterateJobParallelFor : IJobParallelFor
+	struct ChunkedListIterateJobParallelFor : IJobParallelForRanged
 	{
 		public NativeChunkedList<int> List;
 		public NativeArray<int> Sum;
 
-		public void Execute(int index)
+		public void Execute(int startIndex, int endIndex)
 		{
-			Sum[0] += List[index];
+			for (
+				var chunks = List.GetChunksEnumerable(startIndex, endIndex).GetEnumerator();
+				chunks.MoveNext();)
+			{
+				for (
+					var chunk = chunks.Current.GetEnumerator();
+					chunk.MoveNext();)
+				{
+					Sum[0] += chunk.Current;
+				}
+			}
 		}
 	}
 
@@ -359,7 +375,7 @@ public class PerformanceTest : MonoBehaviour
 		chunkedListIterateJob.Run();
 		arrayIterateJobParallelFor.Run(array.Length);
 		linkedListIterateJobParallelFor.Run(linkedList.Length);
-		chunkedListIterateJobParallelFor.Run(chunkedList.Length);
+		chunkedListIterateJobParallelFor.RunRanged(chunkedList.Length);
 		list.Clear();
 		linkedList.Clear();
 		chunkedList.Clear();
@@ -502,7 +518,7 @@ public class PerformanceTest : MonoBehaviour
 
 		// Run add jobs
 
-		var sw = new System.Diagnostics.Stopwatch();
+		System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
 
 		sw.Reset();
 		sw.Start();
@@ -548,19 +564,19 @@ public class PerformanceTest : MonoBehaviour
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
-		arrayIterateJobParallelFor.Run(array.Length);
+		arrayIterateJobParallelFor.Run(size);
 		long arrayIterateParallelForTicks = sw.ElapsedTicks;
 
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
-		linkedListIterateJobParallelFor.Run(linkedList.Length);
+		linkedListIterateJobParallelFor.Run(size);
 		long linkedListIterateParallelForTicks = sw.ElapsedTicks;
 
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
-		chunkedListIterateJobParallelFor.Run(chunkedList.Length);
+		chunkedListIterateJobParallelFor.RunRanged(size);
 		long chunkedListIterateParallelForTicks = sw.ElapsedTicks;
 
 		// Clear native collections
@@ -597,12 +613,12 @@ public class PerformanceTest : MonoBehaviour
 
 		sw.Reset();
 		sw.Start();
-		nativeIntPtrParallelJob.Run(array.Length);
+		nativeIntPtrParallelJob.Run(size);
 		long nativeIntPtrTicks = sw.ElapsedTicks;
 
 		sw.Reset();
 		sw.Start();
-		nativePerJobThreadIntPtrParallelJob.Run(array.Length);
+		nativePerJobThreadIntPtrParallelJob.Run(size);
 		long nativePerJobThreadIntPtrTicks = sw.ElapsedTicks;
 
 		// Report results

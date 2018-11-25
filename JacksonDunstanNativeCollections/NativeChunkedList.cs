@@ -22,7 +22,7 @@ namespace JacksonDunstan.NativeCollections
 	{
 		/// <summary>
 		/// Array of elements in this chunk. Length is always equal to
-		/// <see cref="NativeChunkedListState.m_NumElementsPerChunk"/>.
+		/// <see cref="NativeChunkedListState.m_ChunkLength"/>.
 		/// </summary>
 		internal void* m_Values;
 	}
@@ -38,7 +38,7 @@ namespace JacksonDunstan.NativeCollections
 		/// <summary>
 		/// The number of elements in a chunk
 		/// </summary>
-		internal int m_NumElementsPerChunk;
+		internal int m_ChunkLength;
 
 		/// <summary>
 		/// Array of chunks of elements. Length is <see cref="m_Capacity"/>.
@@ -92,43 +92,668 @@ namespace JacksonDunstan.NativeCollections
 		where T : struct
 	{
 		/// <summary>
-		/// An enumerator for <see cref="NativeChunkedList{T}"/>
+		/// An enumerable for chunks of <see cref="NativeChunkedList{T}"/>
 		/// </summary>
 		[StructLayout(LayoutKind.Sequential)]
-		public unsafe struct Enumerator
+		public unsafe struct ChunksEnumerable
+			: IEnumerable<IEnumerable<T>>
+			, IEnumerable
+			, IDisposable
+		{
+			/// <summary>
+			/// List whose chunks to enumerate
+			/// </summary>
+			private readonly NativeChunkedList<T> m_List;
+
+			/// <summary>
+			/// Index of the first chunk to enumerate
+			/// </summary>
+			private readonly int m_StartChunksIndex;
+
+			/// <summary>
+			/// Index of the element in the first chunk to enumerate
+			/// </summary>
+			private readonly int m_StartChunkIndex;
+
+			/// <summary>
+			/// Index of the last chunk to enumerate
+			/// </summary>
+			private readonly int m_EndChunksIndex;
+
+			/// <summary>
+			/// Index of the element in the last chunk to enumerate
+			/// </summary>
+			private readonly int m_EndChunkIndex;
+
+			/// <summary>
+			/// Create the enumerable to enumerate the chunks of a given list
+			/// 
+			/// This operation has no access requirements on the enumerable's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <param name="list">
+			/// List whose chunks to enumerate
+			/// </param>
+			/// 
+			/// <param name="startChunksIndex">
+			/// Index of the first chunk to enumerate
+			/// </param>
+			/// 
+			/// <param name="startChunkIndex">
+			/// Index of the element in the first chunk to enumerate
+			/// </param>
+			/// 
+			/// <param name="endChunksIndex">
+			/// Index of the last chunk to enumerate
+			/// </param>
+			/// 
+			/// <param name="endChunkIndex">
+			/// Index of the element in the last chunk to enumerate
+			/// </param>
+			internal ChunksEnumerable(
+				NativeChunkedList<T> list,
+				int startChunksIndex,
+				int startChunkIndex,
+				int endChunksIndex,
+				int endChunkIndex)
+			{
+				m_List = list;
+				m_StartChunksIndex = startChunksIndex;
+				m_StartChunkIndex = startChunkIndex;
+				m_EndChunksIndex = endChunksIndex;
+				m_EndChunkIndex = endChunkIndex;
+			}
+
+			/// <summary>
+			/// Get an enumerator to enumerate the chunks of the list passed to
+			/// the constructor
+			/// 
+			/// This operation has no access requirements on the enumerable's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// An enumerator to enumerate the chunks of the list passed to
+			/// the constructor. It is currently just before the first chunk, so
+			/// call <see cref="ChunkEnumerator.MoveNext"/> to advance it to the
+			/// first chunk.
+			/// </returns>
+			public ChunksEnumerator GetEnumerator()
+			{
+				return new ChunksEnumerator(
+					m_List,
+					m_StartChunksIndex,
+					m_StartChunkIndex,
+					m_EndChunksIndex,
+					m_EndChunkIndex);
+			}
+
+			/// <summary>
+			/// Get an enumerator to enumerate the chunks of the list passed to
+			/// the constructor
+			/// 
+			/// This operation has no access requirements on the enumerable's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// An enumerator to enumerate the chunks of the list passed to
+			/// the constructor. It is currently just before the first chunk, so
+			/// call <see cref="ChunkEnumerator.MoveNext"/> to advance it to the
+			/// first chunk.
+			/// </returns>
+			IEnumerator<IEnumerable<T>> IEnumerable<IEnumerable<T>>.GetEnumerator()
+			{
+				return GetEnumerator();
+			}
+
+			/// <summary>
+			/// Get an enumerator to enumerate the chunks of the list passed to
+			/// the constructor
+			/// 
+			/// This operation has no access requirements on the enumerable's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// An enumerator to enumerate the chunks of the list passed to
+			/// the constructor. It is currently just before the first chunk, so
+			/// call <see cref="ChunkEnumerator.MoveNext"/> to advance it to the
+			/// first chunk.
+			/// </returns>
+			IEnumerator IEnumerable.GetEnumerator()
+			{
+				return GetEnumerator();
+			}
+
+			/// <summary>
+			/// Dispose of this enumerable. This is a no-op.
+			/// 
+			/// This operation has no access requirements on the enumerable's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			public void Dispose()
+			{
+			}
+		}
+
+		/// <summary>
+		/// An enumerator for chunks of <see cref="NativeChunkedList{T}"/>
+		/// </summary>
+		[StructLayout(LayoutKind.Sequential)]
+		public unsafe struct ChunksEnumerator
+			: IEnumerator<IEnumerable<T>>
+			, IEnumerator
+			, IDisposable
+		{
+			/// <summary>
+			/// List whose chunks to enumerate
+			/// </summary>
+			private readonly NativeChunkedList<T> m_List;
+
+			/// <summary>
+			/// Index of the current chunk
+			/// </summary>
+			private int m_Index;
+
+			/// <summary>
+			/// Index of the first chunk to enumerate
+			/// </summary>
+			private readonly int m_StartChunksIndex;
+
+			/// <summary>
+			/// Index of the element in the first chunk to enumerate
+			/// </summary>
+			private readonly int m_StartChunkIndex;
+
+			/// <summary>
+			/// Index of the last chunk to enumerate
+			/// </summary>
+			private readonly int m_EndChunksIndex;
+
+			/// <summary>
+			/// Index of the element in the last chunk to enumerate
+			/// </summary>
+			private readonly int m_EndChunkIndex;
+
+			/// <summary>
+			/// Create the enumerator to enumerate over the chunks of the given
+			/// list. It is currently just before the first chunk, so call
+			/// <see cref="MoveNext"/> to advance to the first chunk.
+			/// 
+			/// This operation has no access requirements on the enumerator's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <param name="list">
+			/// List to enumerate
+			/// </param>
+			/// 
+			/// <param name="startChunksIndex">
+			/// Index of the first chunk to enumerate
+			/// </param>
+			/// 
+			/// <param name="startChunkIndex">
+			/// Index of the element in the first chunk to enumerate
+			/// </param>
+			/// 
+			/// <param name="endChunksIndex">
+			/// Index of the last chunk to enumerate
+			/// </param>
+			/// 
+			/// <param name="endChunkIndex">
+			/// Index of the element in the last chunk to enumerate
+			/// </param>
+			internal ChunksEnumerator(
+				NativeChunkedList<T> list,
+				int startChunksIndex,
+				int startChunkIndex,
+				int endChunksIndex,
+				int endChunkIndex)
+			{
+				m_List = list;
+				m_Index = startChunksIndex - 1;
+				m_StartChunksIndex = startChunksIndex;
+				m_StartChunkIndex = startChunkIndex;
+				m_EndChunksIndex = endChunksIndex;
+				m_EndChunkIndex = endChunkIndex;
+			}
+
+			/// <summary>
+			/// Move the enumerator to the next chunk
+			/// 
+			/// This operation requires read access to the enumerator's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// If the enumerator hasn't moved beyond the last chunk and it is
+			/// therefore still safe to call <see cref="Current"/>.
+			/// </returns>
+			public bool MoveNext()
+			{
+				m_List.RequireReadAccess();
+
+				m_Index++;
+				return m_Index <= m_EndChunksIndex;
+			}
+
+			/// <summary>
+			/// Get an enumerable for the current chunk
+			/// 
+			/// This operation requires read access to the enumerator's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <value>
+			/// An enumerable for the current chunk
+			/// </value>
+			public ChunkEnumerable Current
+			{
+				get
+				{
+					m_List.RequireReadAccess();
+
+					// Just one chunk
+					NativeChunkedListState* state = m_List.m_State;
+					void* chunk = state->m_Chunks[m_Index].m_Values;
+					int startChunkIndex;
+					int endChunkIndex;
+					if (m_StartChunksIndex == m_EndChunksIndex)
+					{
+						startChunkIndex = m_StartChunkIndex;
+						endChunkIndex = m_EndChunkIndex;
+					}
+					// Start chunk
+					else if (m_Index == m_StartChunksIndex)
+					{
+						startChunkIndex = m_StartChunkIndex;
+						endChunkIndex = state->m_ChunkLength - 1;
+					}
+					// End chunk
+					else if (m_Index == m_EndChunksIndex)
+					{
+						startChunkIndex = 0;
+						endChunkIndex = m_EndChunkIndex;
+					}
+					// Middle chunk
+					else
+					{
+						startChunkIndex = 0;
+						endChunkIndex = state->m_ChunkLength - 1;
+					}
+
+					// Create the enumerator
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+					int baseIndex = state->m_ChunkLength * m_Index;
+					return new ChunkEnumerable(
+						m_List,
+						chunk,
+						startChunkIndex,
+						endChunkIndex,
+						baseIndex);
+#else
+					return new ChunkEnumerable(
+						m_List,
+						chunk,
+						startChunkIndex,
+						endChunkIndex);
+#endif
+				}
+			}
+
+			/// <summary>
+			/// Get an enumerable for the current chunk
+			/// 
+			/// This operation requires read access to the enumerator's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <value>
+			/// An enumerable for the current chunk
+			/// </value>
+			IEnumerable<T> IEnumerator<IEnumerable<T>>.Current
+			{
+				get
+				{
+					return Current;
+				}
+			}
+
+			/// <summary>
+			/// Get an enumerable for the current chunk
+			/// 
+			/// This operation requires read access to the enumerator's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <value>
+			/// An enumerable for the current chunk
+			/// </value>
+			object IEnumerator.Current
+			{
+				get
+				{
+					return Current;
+				}
+			}
+
+			/// <summary>
+			/// Reset the enumerator to just before the first chunk
+			/// 
+			/// This operation requires read access to the enumerator's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			public void Reset()
+			{
+				m_List.RequireReadAccess();
+
+				m_Index = m_StartChunksIndex - 1;
+			}
+
+			/// <summary>
+			/// Dispose of this enumerator. This is a no-op.
+			/// 
+			/// This operation has no access requirements on the enumerator's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			public void Dispose()
+			{
+			}
+
+			/// <summary>
+			/// Set whether both read and write access should be allowed for the
+			/// enumerator's list. This is used for automated testing purposes
+			/// only.
+			/// </summary>
+			/// 
+			/// <param name="allowReadOrWriteAccess">
+			/// If both read and write access should be allowed for the
+			/// enumerator's list
+			/// </param>
+			[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+			[BurstDiscard]
+			public void TestUseOnlySetAllowReadAndWriteAccess(
+				bool allowReadOrWriteAccess)
+			{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				AtomicSafetyHandle.SetAllowReadOrWriteAccess(
+					m_List.m_Safety,
+					allowReadOrWriteAccess);
+#endif
+			}
+		}
+
+		/// <summary>
+		/// An enumerable for elements of a chunk of a
+		/// <see cref="NativeChunkedList{T}"/>
+		/// </summary>
+		[StructLayout(LayoutKind.Sequential)]
+		public unsafe struct ChunkEnumerable
+			: IEnumerable<T>
+			, IEnumerable
+			, IDisposable
+		{
+			/// <summary>
+			/// List whose chunk is being enumerated
+			/// </summary>
+			private readonly NativeChunkedList<T> m_List;
+
+			/// <summary>
+			/// Chunk whose elements are being enumerated
+			/// </summary>
+			private readonly void* m_Chunk;
+
+			/// <summary>
+			/// Index of the first element to enumerate
+			/// </summary>
+			private readonly int m_StartChunkIndex;
+
+			/// <summary>
+			/// Index of the last element to enumerate
+			/// </summary>
+			private readonly int m_EndChunkIndex;
+
+			/// <summary>
+			/// Overall list index of the first element of the chunk
+			/// </summary>
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+			private readonly int m_BaseIndex;
+#endif
+
+			/// <summary>
+			/// Create the enumerable for a chunk
+			/// </summary>
+			/// 
+			/// <param name="list">
+			/// List whose chunk is being enumerated
+			/// </param>
+			/// 
+			/// <param name="chunk">
+			/// Chunk whose elements are being enumerated
+			/// </param>
+			/// 
+			/// <param name="startChunkIndex">
+			/// Index of the first element to enumerate
+			/// </param>
+			/// 
+			/// <param name="endChunkIndex">
+			/// Index of the last element to enumerate
+			/// </param>
+			/// 
+			/// <param name="baseIndex">
+			/// Overall list index of the first element of the chunk
+			/// </param>
+			internal ChunkEnumerable(
+				NativeChunkedList<T> list,
+				void* chunk,
+				int startChunkIndex,
+				int endChunkIndex
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				, int baseIndex
+#endif
+			)
+			{
+				m_List = list;
+				m_Chunk = chunk;
+				m_StartChunkIndex = startChunkIndex;
+				m_EndChunkIndex = endChunkIndex;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				m_BaseIndex = baseIndex;
+#endif
+			}
+
+			/// <summary>
+			/// Create an enumerator for the elements of the chunk
+			/// 
+			/// This operation has no access requirements on the enumerable's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// An enumerator for the chunk
+			/// </returns>
+			public ChunkEnumerator GetEnumerator()
+			{
+				return new ChunkEnumerator(
+					m_List,
+					m_Chunk,
+					m_StartChunkIndex,
+					m_EndChunkIndex
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+					, m_BaseIndex
+#endif
+				);
+			}
+
+			/// <summary>
+			/// Create an enumerator for the elements of the chunk
+			/// 
+			/// This operation has no access requirements on the enumerable's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// An enumerator for the chunk
+			/// </returns>
+			IEnumerator<T> IEnumerable<T>.GetEnumerator()
+			{
+				return GetEnumerator();
+			}
+
+			/// <summary>
+			/// Create an enumerator for the elements of the chunk
+			/// 
+			/// This operation has no access requirements on the enumerable's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <returns>
+			/// An enumerator for the chunk
+			/// </returns>
+			IEnumerator IEnumerable.GetEnumerator()
+			{
+				return GetEnumerator();
+			}
+
+			/// <summary>
+			/// Dispose of this enumerable. This is a no-op.
+			/// 
+			/// This operation has no access requirements on the enumerable's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			public void Dispose()
+			{
+			}
+		}
+
+		/// <summary>
+		/// An enumerator for elements of a chunk of a
+		/// <see cref="NativeChunkedList{T}"/>
+		/// </summary>
+		[StructLayout(LayoutKind.Sequential)]
+		public unsafe struct ChunkEnumerator
 			: IEnumerator<T>
 			, IEnumerator
 			, IDisposable
 		{
 			/// <summary>
-			/// Index of the element
+			/// List whose chunk is being enumerated
 			/// </summary>
-			internal int m_Index;
+			private NativeChunkedList<T> m_List;
 
 			/// <summary>
-			/// List to iterate
+			/// Chunk whose elements are being enumerated
 			/// </summary>
-			internal NativeChunkedList<T> m_List;
+			private readonly void* m_Chunk;
 
 			/// <summary>
-			/// Create the enumerator for a particular element
+			/// Current index into the chunk's elements
+			/// </summary>
+			private int m_Index;
+
+			/// <summary>
+			/// Index of the first element to enumerate
+			/// </summary>
+			private readonly int m_StartChunkIndex;
+
+			/// <summary>
+			/// Index of the last element to enumerate
+			/// </summary>
+			private readonly int m_EndChunkIndex;
+
+			/// <summary>
+			/// Overall list index of the first element of the chunk
+			/// </summary>
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+			private readonly int m_BaseIndex;
+#endif
+
+			/// <summary>
+			/// Create the enumerator for a chunk. It is initially just before
+			/// the first element. Call <see cref="MoveNext"/> to advance to
+			/// the first element.
+			/// 
+			/// This operation has no access requirements on the enumerator's
+			/// associated list.
+			///
+			/// This operation is O(1).
 			/// </summary>
 			/// 
 			/// <param name="list">
-			/// List to iterate
+			/// List whose chunk is being enumerated
 			/// </param>
 			/// 
-			/// <param name="index">
-			/// Index of the element. Out-of-bounds values are OK.
+			/// <param name="chunk">
+			/// Chunk whose elements are being enumerated
 			/// </param>
-			internal Enumerator(NativeChunkedList<T> list, int index)
+			/// 
+			/// <param name="startChunkIndex">
+			/// Index of the first element to enumerate
+			/// </param>
+			/// 
+			/// <param name="endChunkIndex">
+			/// Index of the last element to enumerate
+			/// </param>
+			/// 
+			/// <param name="baseIndex">
+			/// Overall list index of the first element of the chunk
+			/// </param>
+			internal ChunkEnumerator(
+				NativeChunkedList<T> list,
+				void* chunk,
+				int startChunkIndex,
+				int endChunkIndex
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				, int baseIndex
+#endif
+			)
 			{
-				m_Index = index;
 				m_List = list;
+				m_Chunk = chunk;
+				m_Index = startChunkIndex - 1;
+				m_StartChunkIndex = startChunkIndex;
+				m_EndChunkIndex = endChunkIndex;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				m_BaseIndex = baseIndex;
+#endif
 			}
 
 			/// <summary>
-			/// Move to the next element of the list.
+			/// Move to the next element of the chunk
 			/// 
 			/// This operation has no access requirements on the enumerator's
 			/// associated list.
@@ -137,12 +762,94 @@ namespace JacksonDunstan.NativeCollections
 			/// </summary>
 			/// 
 			/// <returns>
-			/// If this enumerator is before or at the end of the list
+			/// If there are more elements of the chunk to enumerate and it is
+			/// therefore safe to call <see cref="Current"/> to read their
+			/// values.
 			/// </returns>
 			public bool MoveNext()
 			{
 				m_Index++;
-				return m_Index < m_List.Length;
+				return m_Index <= m_EndChunkIndex;
+			}
+
+			/// <summary>
+			/// Get the current element of the chunk
+			/// 
+			/// This operation requires read access to the element for the 'get'
+			/// and write access to the element for the 'set'
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <value>
+			/// The current element of the chunk
+			/// </value>
+			public T Current
+			{
+				get
+				{
+					m_List.RequireReadAccess();
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+					m_List.RequireIndexInSafetyRange(m_BaseIndex + m_Index);
+#endif
+
+					return UnsafeUtility.ReadArrayElement<T>(m_Chunk, m_Index);
+				}
+
+				[WriteAccessRequired]
+				set
+				{
+					m_List.RequireWriteAccess();
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+					m_List.RequireIndexInSafetyRange(m_BaseIndex + m_Index);
+#endif
+
+					UnsafeUtility.WriteArrayElement(m_Chunk, m_Index, value);
+				}
+			}
+
+			/// <summary>
+			/// Get the current element of the chunk
+			/// 
+			/// This operation requires read access to the element
+			///
+			/// This operation is O(1).
+			/// </summary>
+			/// 
+			/// <value>
+			/// The current element of the chunk
+			/// </value>
+			object IEnumerator.Current
+			{
+				get
+				{
+					return Current;
+				}
+			}
+
+			/// <summary>
+			/// Reset to just before the first element
+			/// 
+			/// This operation has no access requirements on the enumerator's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			public void Reset()
+			{
+				m_Index = m_StartChunkIndex - 1;
+			}
+
+			/// <summary>
+			/// Dispose of this enumerator. This is a no-op.
+			/// 
+			/// This operation has no access requirements on the enumerator's
+			/// associated list.
+			///
+			/// This operation is O(1).
+			/// </summary>
+			public void Dispose()
+			{
 			}
 
 			/// <summary>
@@ -195,18 +902,58 @@ namespace JacksonDunstan.NativeCollections
 					allowReadOrWriteAccess);
 #endif
 			}
+		}
+
+		/// <summary>
+		/// An enumerator for <see cref="NativeChunkedList{T}"/>
+		/// </summary>
+		[StructLayout(LayoutKind.Sequential)]
+		public unsafe struct Enumerator
+			: IEnumerator<T>
+			, IEnumerator
+			, IDisposable
+		{
+			/// <summary>
+			/// Index of the element
+			/// </summary>
+			internal int m_Index;
 
 			/// <summary>
-			/// Dispose the enumerator. This operation has no effect and exists
-			/// only to satisfy the requirements of <see cref="IDisposable"/>.
+			/// List to iterate
+			/// </summary>
+			internal NativeChunkedList<T> m_List;
+
+			/// <summary>
+			/// Create the enumerator for a particular element
+			/// </summary>
 			/// 
-			/// This operation has no access requirements on the enumerator's
+			/// <param name="list">
+			/// List to iterate
+			/// </param>
+			internal Enumerator(NativeChunkedList<T> list)
+			{
+				m_Index = -1;
+				m_List = list;
+			}
+
+			/// <summary>
+			/// Move to the next element of the list.
+			/// 
+			/// This operation requires read access to the enumerator's
 			/// associated list.
-			/// 
+			///
 			/// This operation is O(1).
 			/// </summary>
-			public void Dispose()
+			/// 
+			/// <returns>
+			/// If this enumerator is before or at the end of the list
+			/// </returns>
+			public bool MoveNext()
 			{
+				m_List.RequireReadAccess();
+
+				m_Index++;
+				return m_Index < m_List.Length;
 			}
 
 			/// <summary>
@@ -223,10 +970,10 @@ namespace JacksonDunstan.NativeCollections
 			}
 
 			/// <summary>
-			/// Get or set a element's value.
+			/// Get the element's value.
 			/// 
-			/// This operation requires read access to the element for 'get' and
-			/// write access to the element for 'set'.
+			/// This operation requires read access to the element for the 'get'
+			/// and write access to the element for the 'set'
 			///
 			/// This operation is O(1).
 			/// </summary>
@@ -267,8 +1014,72 @@ namespace JacksonDunstan.NativeCollections
 			{
 				get
 				{
-					return m_List[m_Index];
+					return Current;
 				}
+			}
+
+			/// <summary>
+			/// Dispose the enumerator. This operation has no effect and exists
+			/// only to satisfy the requirements of <see cref="IDisposable"/>.
+			/// 
+			/// This operation has no access requirements on the enumerator's
+			/// associated list.
+			/// 
+			/// This operation is O(1).
+			/// </summary>
+			public void Dispose()
+			{
+			}
+
+			/// <summary>
+			/// Set the ParallelFor safety check ranges of the list this
+			/// enumerator is for. This is used for automated testing purposes
+			/// only.
+			/// </summary>
+			/// 
+			/// <param name="minIndex">
+			/// The minimum index that can safely be accessed. This is zero
+			/// outside of a job and in a regular, non-ParallelFor job but set
+			/// higher by ParallelFor jobs.
+			/// </param>
+			/// 
+			/// <param name="maxIndex">
+			/// The maximum index that can safely be accessed. This is equal to
+			/// (m_Length-1) outside of a job and in a regular, non-ParallelFor
+			/// job but set lower by ParallelFor jobs.
+			/// </param>
+			[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+			[BurstDiscard]
+			public void TestUseOnlySetParallelForSafetyCheckRange(
+				int minIndex,
+				int maxIndex)
+			{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				m_List.m_MinIndex = minIndex;
+				m_List.m_MaxIndex = maxIndex;
+#endif
+			}
+
+			/// <summary>
+			/// Set whether both read and write access should be allowed for the
+			/// enumerator's list. This is used for automated testing purposes
+			/// only.
+			/// </summary>
+			/// 
+			/// <param name="allowReadOrWriteAccess">
+			/// If both read and write access should be allowed for the
+			/// enumerator's list
+			/// </param>
+			[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+			[BurstDiscard]
+			public void TestUseOnlySetAllowReadAndWriteAccess(
+				bool allowReadOrWriteAccess)
+			{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				AtomicSafetyHandle.SetAllowReadOrWriteAccess(
+					m_List.m_Safety,
+					allowReadOrWriteAccess);
+#endif
 			}
 		}
 
@@ -332,7 +1143,7 @@ namespace JacksonDunstan.NativeCollections
 		/// complexity plus O(N) where N is the given capacity.
 		/// </summary>
 		/// 
-		/// <param name="numElementsPerChunk">
+		/// <param name="chunkLength">
 		/// Number of elements stored in one chunk. If less than one, one is
 		/// used.
 		/// </param>
@@ -346,7 +1157,7 @@ namespace JacksonDunstan.NativeCollections
 		/// Allocator to allocate unmanaged memory with. Must be valid.
 		/// </param>
 		public NativeChunkedList(
-			int numElementsPerChunk,
+			int chunkLength,
 			int capacity,
 			Allocator allocator)
 		{
@@ -361,9 +1172,9 @@ namespace JacksonDunstan.NativeCollections
 			RequireBlittable();
 
 			// Insist on a minimum number of elements per chunk
-			if (numElementsPerChunk < 1)
+			if (chunkLength < 1)
 			{
-				numElementsPerChunk = 1;
+				chunkLength = 1;
 			}
 
 			// Insist on a minimum capacity
@@ -378,7 +1189,7 @@ namespace JacksonDunstan.NativeCollections
 				UnsafeUtility.SizeOf<NativeChunkedListState>(),
 				UnsafeUtility.AlignOf<NativeChunkedListState>(),
 				allocator);
-			m_State->m_NumElementsPerChunk = numElementsPerChunk;
+			m_State->m_ChunkLength = chunkLength;
 			m_State->m_Chunks = null;
 			m_State->m_Length = 0;
 			m_State->m_Capacity = 0;
@@ -435,14 +1246,14 @@ namespace JacksonDunstan.NativeCollections
 
 				// Round the new capacity up to the next multiple of the number
 				// of elements per chunk
-				int numElementsPerChunk = m_State->m_NumElementsPerChunk;
-				int newCapacity = (value + numElementsPerChunk - 1)
-					/ numElementsPerChunk
-					* numElementsPerChunk;
+				int chunkLength = m_State->m_ChunkLength;
+				int newCapacity = (value + chunkLength - 1)
+					/ chunkLength
+					* chunkLength;
 
 				// Number of chunks has increased
 				int numOldChunks = m_State->m_ChunksLength;
-				int numNewChunks = newCapacity / numElementsPerChunk;
+				int numNewChunks = newCapacity / chunkLength;
 				if (numNewChunks > numOldChunks)
 				{
 					// Need more chunks than we have available
@@ -485,7 +1296,7 @@ namespace JacksonDunstan.NativeCollections
 					}
 
 					// Allocate the new chunks
-					int size = numElementsPerChunk * UnsafeUtility.SizeOf<T>();
+					int size = chunkLength * UnsafeUtility.SizeOf<T>();
 					int align = UnsafeUtility.AlignOf<T>();
 					for (int i = numOldChunks; i < numNewChunks; ++i)
 					{
@@ -561,7 +1372,7 @@ namespace JacksonDunstan.NativeCollections
 		/// </value>
 		public Enumerator GetEnumerator()
 		{
-			return new Enumerator(this, -1);
+			return new Enumerator(this);
 		}
 
 		/// <summary>
@@ -578,7 +1389,7 @@ namespace JacksonDunstan.NativeCollections
 		/// </value>
 		IEnumerator<T> IEnumerable<T>.GetEnumerator()
 		{
-			return new Enumerator(this, -1);
+			return new Enumerator(this);
 		}
 
 		/// <summary>
@@ -595,7 +1406,70 @@ namespace JacksonDunstan.NativeCollections
 		/// </value>
 		IEnumerator IEnumerable.GetEnumerator()
 		{
-			return new Enumerator(this, -1);
+			return new Enumerator(this);
+		}
+
+		/// <summary>
+		/// Get an enumerator over the chunks starting at the chunk at index -1.
+		/// It will refer to the first chunk after a call to
+		/// <see cref="ChunksEnumerator.MoveNext()"/>.
+		/// 
+		/// This operation has no access requirements.
+		/// 
+		/// This operation is O(1).
+		/// </summary>
+		/// 
+		/// <value>
+		/// An enumerator to the chunk at index -1.
+		/// </value>
+		public ChunksEnumerable Chunks
+		{
+			get
+			{
+				return new ChunksEnumerable(
+					this,
+					0,
+					0,
+					m_State->m_ChunksLength - 1,
+					(m_State->m_Length - 1) % m_State->m_ChunkLength);
+			}
+		}
+
+		/// <summary>
+		/// Get an enumerator over the chunks starting at the chunk before the
+		/// element at the given starting index and the element before it in its
+		/// own chunk. It will refer to the specified element after a call to
+		/// <see cref="ChunksEnumerator.MoveNext()"/> and
+		/// <see cref="ChunkEnumerator.MoveNext"/>. Enumeration will continue
+		/// until the specified end index is reached.
+		/// 
+		/// This operation requires read access.
+		/// 
+		/// This operation is O(1).
+		/// </summary>
+		/// 
+		/// <param name="startIndex">
+		/// Index to start enumerating at. Must be non-negative.
+		/// </param>
+		/// 
+		/// <param name="endIndex">
+		/// Index to end enumerating at. Must be less than the
+		/// <see cref="Length"/>.
+		/// </param>
+		public ChunksEnumerable GetChunksEnumerable(
+			int startIndex,
+			int endIndex)
+		{
+			RequireReadAccess();
+			int lastIndex = endIndex - 1;
+			RequireIndicesInBounds(startIndex, lastIndex);
+
+			return new ChunksEnumerable(
+				this,
+				startIndex / m_State->m_ChunkLength,
+				startIndex % m_State->m_ChunkLength,
+				lastIndex / m_State->m_ChunkLength,
+				lastIndex % m_State->m_ChunkLength);
 		}
 
 		/// <summary>
@@ -618,9 +1492,9 @@ namespace JacksonDunstan.NativeCollections
 				RequireReadAccess();
 				RequireIndexInSafetyRange(index);
 
-				int numElementsPerChunk = m_State->m_NumElementsPerChunk;
-				int chunkIndex = index / numElementsPerChunk;
-				int chunkArrayIndex = index % numElementsPerChunk;
+				int chunkLength = m_State->m_ChunkLength;
+				int chunkIndex = index / chunkLength;
+				int chunkArrayIndex = index % chunkLength;
 				void* chunkArray = m_State->m_Chunks[chunkIndex].m_Values;
 				return UnsafeUtility.ReadArrayElement<T>(
 					chunkArray,
@@ -633,9 +1507,9 @@ namespace JacksonDunstan.NativeCollections
 				RequireWriteAccess();
 				RequireIndexInSafetyRange(index);
 
-				int numElementsPerChunk = m_State->m_NumElementsPerChunk;
-				int chunkIndex = index / numElementsPerChunk;
-				int chunkArrayIndex = index % numElementsPerChunk;
+				int chunkLength = m_State->m_ChunkLength;
+				int chunkIndex = index / chunkLength;
+				int chunkArrayIndex = index % chunkLength;
 				void* chunkArray = m_State->m_Chunks[chunkIndex].m_Values;
 				UnsafeUtility.WriteArrayElement(
 					chunkArray,
@@ -1411,12 +2285,13 @@ namespace JacksonDunstan.NativeCollections
 				throw new IndexOutOfRangeException(
 					"Index " + index + " is out of restricted " +
 					"ParallelFor range [" + m_MinIndex +
-					"..." + m_MaxIndex + "] in ReadWriteBuffer.\n" +
+					"..." + m_MaxIndex + "] with list length " + m_Length +
+					" in ReadWriteBuffer.\n" +
 					"ReadWriteBuffers are restricted to only read and " +
-					"write the element at the job index. You can " +
+					"write the node at the job index. You can " +
 					"use double buffering strategies to avoid race " +
 					"conditions due to reading and writing in parallel " +
-					"to the same elements from a ParallelFor job.");
+					"to the same nodes from a ParallelFor job.");
 			}
 
 			// The index is out of the capacity
@@ -1586,6 +2461,45 @@ namespace JacksonDunstan.NativeCollections
 					"Range end indices must be less than the array length.");
 			}
 #endif
+		}
+
+		/// <summary>
+		/// Throw an exception if the given range is invalid for the list
+		/// </summary>
+		/// 
+		/// <param name="startIndex">
+		/// Start index that must be non-negative and less than or equal to
+		/// the end index
+		/// </param>
+		/// 
+		/// <param name="endIndex">
+		/// End index that must be less than the length and greater than or
+		/// equal to the start index
+		/// </param>
+		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+		[BurstDiscard]
+		private void RequireIndicesInBounds(int startIndex, int endIndex)
+		{
+			if (startIndex < 0)
+			{
+				throw new IndexOutOfRangeException(
+					"Invalid start index: " + startIndex + ". "
+					+ "It must be non-negative");
+			}
+
+			if (endIndex >= m_State->m_Length)
+			{
+				throw new IndexOutOfRangeException(
+					"Invalid end index: " + endIndex + ". "
+					+ "It must be less than the length: " + m_State->m_Length);
+			}
+
+			if (startIndex > endIndex)
+			{
+				throw new IndexOutOfRangeException(
+					"Invalid range from " + startIndex + " to " + endIndex
+					+ ". The start must be less than or equal to the end.");
+			}
 		}
 	}
 
