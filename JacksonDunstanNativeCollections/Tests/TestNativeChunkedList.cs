@@ -1317,6 +1317,8 @@ namespace JacksonDunstan.NativeCollections.Tests
 				list.TestUseOnlySetParallelForSafetyCheckRange(
 					0,
 					list.Length - 1);
+
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -1489,6 +1491,8 @@ namespace JacksonDunstan.NativeCollections.Tests
 					list.TestUseOnlySetParallelForSafetyCheckRange(
 						0,
 						list.Length - 1);
+
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 				}
 			}
 		}
@@ -1521,6 +1525,28 @@ namespace JacksonDunstan.NativeCollections.Tests
 			using (NativeChunkedList<int> list = CreateListValues(10, 20, 30))
 			{
 				Assert.That(list.IsCreated, Is.True);
+			}
+		}
+
+		[Test]
+		public void PrepareForParallelForJobRequiresWriteAccess()
+		{
+			using (NativeChunkedList<int> list = CreateListValues(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.PrepareForParallelForJob());
+			}
+		}
+
+		[Test]
+		public void PrepareForParallelForJobRequiresFullListAccess()
+		{
+			using (NativeChunkedList<int> list = CreateListValues(10, 20, 30))
+			{
+				AssertRequiresFullListAccess(
+					list,
+					copy => copy.PrepareForParallelForJob());
 			}
 		}
 
@@ -2699,6 +2725,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					1,
 					Allocator.Temp))
 				{
+					list.PrepareForParallelForJob();
 					new TestParallelForJob {
 						List = list,
 						Sum = sum }.Run(list.Length);
@@ -2741,6 +2768,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 				using (NativePerJobThreadIntPtr sum = new NativePerJobThreadIntPtr(
 					Allocator.Temp))
 				{
+					list.PrepareForParallelForJob();
 					new TestParallelForRangedJob
 					{
 						List = list,
@@ -2767,6 +2795,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 				using (NativePerJobThreadIntPtr sum = new NativePerJobThreadIntPtr(
 					Allocator.Temp))
 				{
+					list.PrepareForParallelForJob();
 					JobHandle handle = new TestParallelForRangedJob
 					{
 						List = list,

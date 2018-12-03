@@ -63,9 +63,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		private static void AssertGeneralInvariants(NativeLinkedList<int> list)
 		{
 			// Reset this copy's safety check range
-			list.TestUseOnlySetParallelForSafetyCheckRange(
-				0,
-				list.Length - 1);
+			list.TestUseOnlySetParallelForSafetyCheckRange();
 
 			// Length and capacity can't be negative
 			Assert.That(list.Length, Is.GreaterThanOrEqualTo(0));
@@ -364,9 +362,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					() => list.InsertAfter(list.Head, 20),
 					Throws.TypeOf<IndexOutOfRangeException>());
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -465,18 +461,14 @@ namespace JacksonDunstan.NativeCollections.Tests
 						Throws.TypeOf<IndexOutOfRangeException>());
 
 					// List to insert doesn't have full list bounds
-					list.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						list.Length - 1);
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 					insertList.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
 
 					Assert.That(
 						() => list.InsertAfter(list.Head, insertList),
 						Throws.TypeOf<IndexOutOfRangeException>());
 
-					insertList.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						insertList.Length - 1);
+					insertList.TestUseOnlySetParallelForSafetyCheckRange();
 					AssertGeneralInvariants(list);
 					AssertGeneralInvariants(insertList);
 				}
@@ -587,9 +579,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 
 					AssertGeneralInvariants(list);
 					AssertGeneralInvariants(insertList);
-					list.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						list.Length - 1);
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 				}
 			}
 		}
@@ -689,9 +679,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 						Throws.TypeOf<IndexOutOfRangeException>());
 
 					AssertGeneralInvariants(list);
-					list.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						list.Length - 1);
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 				}
 			}
 		}
@@ -793,9 +781,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 						Throws.TypeOf<IndexOutOfRangeException>());
 
 					AssertGeneralInvariants(list);
-					list.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						list.Length - 1);
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 				}
 			}
 		}
@@ -892,9 +878,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Throws.TypeOf<IndexOutOfRangeException>());
 
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -993,9 +977,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Throws.TypeOf<IndexOutOfRangeException>());
 
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -1081,9 +1063,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					() => list.InsertBefore(list.Tail, 40),
 					Throws.TypeOf<IndexOutOfRangeException>());
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -1179,18 +1159,14 @@ namespace JacksonDunstan.NativeCollections.Tests
 						Throws.TypeOf<IndexOutOfRangeException>());
 
 					// List to insert doesn't have full list bounds
-					list.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						list.Length - 1);
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 					insertList.TestUseOnlySetParallelForSafetyCheckRange(1, 2);
 
 					Assert.That(
 						() => list.InsertBefore(list.Tail, insertList),
 						Throws.TypeOf<IndexOutOfRangeException>());
 
-					insertList.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						insertList.Length - 1);
+					insertList.TestUseOnlySetParallelForSafetyCheckRange();
 					AssertGeneralInvariants(list);
 					AssertGeneralInvariants(insertList);
 				}
@@ -1314,9 +1290,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 						Throws.TypeOf<IndexOutOfRangeException>());
 
 					AssertGeneralInvariants(list);
-					list.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						list.Length - 1);
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 				}
 			}
 		}
@@ -1397,9 +1371,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 						Throws.TypeOf<IndexOutOfRangeException>());
 
 					AssertGeneralInvariants(list);
-					list.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						list.Length - 1);
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 				}
 			}
 		}
@@ -1501,9 +1473,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 						Throws.TypeOf<IndexOutOfRangeException>());
 
 					AssertGeneralInvariants(list);
-					list.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						list.Length - 1);
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 				}
 			}
 		}
@@ -1604,9 +1574,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Throws.TypeOf<IndexOutOfRangeException>());
 
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -1709,9 +1677,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Throws.TypeOf<IndexOutOfRangeException>());
 
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -1734,9 +1700,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 			{
 				Assert.That(list[1], Is.EqualTo(20));
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -1749,9 +1713,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 
 				Assert.That(() => list[2], Throws.TypeOf<IndexOutOfRangeException>());
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -1891,9 +1853,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Throws.TypeOf<IndexOutOfRangeException>());
 
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -3873,9 +3833,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Throws.TypeOf<IndexOutOfRangeException>());
 
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -3915,9 +3873,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Throws.TypeOf<IndexOutOfRangeException>());
 
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -4000,9 +3956,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					() => list.Swap(list.Tail, list.Head),
 					Throws.TypeOf<IndexOutOfRangeException>());
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -4162,9 +4116,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					() => list.ToArray(array, list.Head, 0, 1),
 					Throws.TypeOf<IndexOutOfRangeException>());
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -4219,9 +4171,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Throws.TypeOf<IndexOutOfRangeException>());
 
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -4381,9 +4331,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					() => list.ToArrayReverse(array, list.Head, 0, 1),
 					Throws.TypeOf<IndexOutOfRangeException>());
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -4438,9 +4386,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Throws.TypeOf<IndexOutOfRangeException>());
 
 				AssertGeneralInvariants(list);
-				list.TestUseOnlySetParallelForSafetyCheckRange(
-					0,
-					list.Length - 1);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -4660,9 +4606,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 						() => list.ToNativeArray(array, list.Head, 0, 1),
 						Throws.TypeOf<IndexOutOfRangeException>());
 					AssertGeneralInvariants(list);
-					list.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						list.Length - 1);
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 				}
 			}
 		}
@@ -4712,9 +4656,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 						Throws.TypeOf<IndexOutOfRangeException>());
 
 					AssertGeneralInvariants(list);
-					list.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						list.Length - 1);
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 				}
 			}
 		}
@@ -4938,9 +4880,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 						() => list.ToNativeArrayReverse(array, list.Head, 0, 1),
 						Throws.TypeOf<IndexOutOfRangeException>());
 					AssertGeneralInvariants(list);
-					list.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						list.Length - 1);
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 				}
 			}
 		}
@@ -4990,9 +4930,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 						Throws.TypeOf<IndexOutOfRangeException>());
 
 					AssertGeneralInvariants(list);
-					list.TestUseOnlySetParallelForSafetyCheckRange(
-						0,
-						list.Length - 1);
+					list.TestUseOnlySetParallelForSafetyCheckRange();
 				}
 			}
 		}
@@ -5009,6 +4947,33 @@ namespace JacksonDunstan.NativeCollections.Tests
 						() => list.ToNativeArrayFullReverse(array));
 					AssertGeneralInvariants(list);
 				}
+			}
+		}
+
+		[Test]
+		public void PrepareForParallelForJobRequiresWriteAccess()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				AssertRequiresReadOrWriteAccess(
+					list,
+					() => list.PrepareForParallelForJob());
+			}
+		}
+
+		[Test]
+		public void PrepareForParallelForJobRequiresFullListAccess()
+		{
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			{
+				list.TestUseOnlySetParallelForSafetyCheckRange(0, 2);
+
+				Assert.That(
+					() => list.PrepareForParallelForJob(),
+					Throws.TypeOf<IndexOutOfRangeException>());
+
+				AssertGeneralInvariants(list);
+				list.TestUseOnlySetParallelForSafetyCheckRange();
 			}
 		}
 
@@ -5046,7 +5011,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 				Throws.TypeOf<IndexOutOfRangeException>());
 			AssertGeneralInvariants(list);
 
-			list.TestUseOnlySetParallelForSafetyCheckRange(0, list.Length);
+			list.TestUseOnlySetParallelForSafetyCheckRange();
 			list.Dispose();
 		}
 
@@ -5116,6 +5081,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 			{
 				using (NativeArray<int> sum = CreateNativeArray(0))
 				{
+					list.PrepareForParallelForJob();
 					ParallelForTestJob job = new ParallelForTestJob
 					{
 						List = list,

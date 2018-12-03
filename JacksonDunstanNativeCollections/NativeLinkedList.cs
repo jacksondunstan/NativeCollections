@@ -188,7 +188,7 @@ namespace JacksonDunstan.NativeCollections
 						if (m_Index >= 0 && m_Index < m_List.m_State->m_Length)
 						{
 							// Return the next node
-							m_List.RequireIndexInSafetyRange(m_Index);
+							m_List.RequireParallelForAccess(m_Index);
 							return new Enumerator(
 								m_List,
 								m_List.m_State->m_NextIndexes[m_Index],
@@ -237,7 +237,7 @@ namespace JacksonDunstan.NativeCollections
 						if (m_Index >= 0 && m_Index < m_List.m_State->m_Length)
 						{
 							// Return the previous node
-							m_List.RequireIndexInSafetyRange(m_Index);
+							m_List.RequireParallelForAccess(m_Index);
 							return new Enumerator(
 								m_List,
 								m_List.m_State->m_PrevIndexes[m_Index],
@@ -284,7 +284,7 @@ namespace JacksonDunstan.NativeCollections
 					if (m_Index >= 0 && m_Index < m_List.m_State->m_Length)
 					{
 						// Go to the next node
-						m_List.RequireIndexInSafetyRange(m_Index);
+						m_List.RequireParallelForAccess(m_Index);
 						m_Index = m_List.m_State->m_NextIndexes[m_Index];
 						return m_Index >= 0;
 					}
@@ -326,7 +326,7 @@ namespace JacksonDunstan.NativeCollections
 					if (m_Index >= 0 && m_Index < m_List.m_State->m_Length)
 					{
 						// Go to the previous node
-						m_List.RequireIndexInSafetyRange(m_Index);
+						m_List.RequireParallelForAccess(m_Index);
 						m_Index = m_List.m_State->m_PrevIndexes[m_Index];
 						return m_Index >= 0;
 					}
@@ -371,7 +371,7 @@ namespace JacksonDunstan.NativeCollections
 						if (m_Index >= 0 && m_Index < m_List.m_State->m_Length)
 						{
 							// Go to the next node
-							m_List.RequireIndexInSafetyRange(m_Index);
+							m_List.RequireParallelForAccess(m_Index);
 							m_Index = m_List.m_State->m_NextIndexes[m_Index];
 						}
 						else
@@ -418,7 +418,7 @@ namespace JacksonDunstan.NativeCollections
 						if (m_Index >= 0 && m_Index < m_List.m_State->m_Length)
 						{
 							// Go to the previous node
-							m_List.RequireIndexInSafetyRange(m_Index);
+							m_List.RequireParallelForAccess(m_Index);
 							m_Index = m_List.m_State->m_PrevIndexes[m_Index];
 						}
 						else
@@ -487,7 +487,7 @@ namespace JacksonDunstan.NativeCollections
 					}
 
 					// Move next
-					m_List.RequireIndexInSafetyRange(index);
+					m_List.RequireParallelForAccess(index);
 					index = m_List.m_State->m_NextIndexes[index];
 					distance++;
 				}
@@ -723,8 +723,8 @@ namespace JacksonDunstan.NativeCollections
 			[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 			[BurstDiscard]
 			public void TestUseOnlySetParallelForSafetyCheckRange(
-				int minIndex,
-				int maxIndex)
+				int minIndex = -1,
+				int maxIndex = -1)
 			{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 				m_List.m_MinIndex = minIndex;
@@ -799,7 +799,7 @@ namespace JacksonDunstan.NativeCollections
 				get
 				{
 					m_List.RequireReadAccess();
-					m_List.RequireIndexInSafetyRange(m_Index);
+					m_List.RequireParallelForAccess(m_Index);
 
 					return UnsafeUtility.ReadArrayElement<T>(
 						m_List.m_State->m_Values,
@@ -810,7 +810,7 @@ namespace JacksonDunstan.NativeCollections
 				set
 				{
 					m_List.RequireWriteAccess();
-					m_List.RequireIndexInSafetyRange(m_Index);
+					m_List.RequireParallelForAccess(m_Index);
 
 					UnsafeUtility.WriteArrayElement(
 						m_List.m_State->m_Values,
@@ -837,7 +837,7 @@ namespace JacksonDunstan.NativeCollections
 				get
 				{
 					m_List.RequireReadAccess();
-					m_List.RequireIndexInSafetyRange(m_Index);
+					m_List.RequireParallelForAccess(m_Index);
 
 					return UnsafeUtility.ReadArrayElement<T>(
 						m_List.m_State->m_Values,
@@ -865,7 +865,7 @@ namespace JacksonDunstan.NativeCollections
 				get
 				{
 					m_List.RequireReadAccess();
-					m_List.RequireIndexInSafetyRange(m_Index);
+					m_List.RequireParallelForAccess(m_Index);
 
 					return UnsafeUtility.ReadArrayElement<T>(
 						m_List.m_State->m_Values,
@@ -997,8 +997,8 @@ namespace JacksonDunstan.NativeCollections
 
 			// Initialize safety ranges
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-			m_Length = 0;
-			m_MinIndex = 0;
+			m_Length = -1;
+			m_MinIndex = -1;
 			m_MaxIndex = -1;
 #if UNITY_2018_3_OR_NEWER
         	DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0, allocator);
@@ -1122,9 +1122,9 @@ namespace JacksonDunstan.NativeCollections
 
 			// Initialize safety ranges
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-			m_Length = length;
-			m_MinIndex = 0;
-			m_MaxIndex = endIndex;
+			m_Length = -1;
+			m_MinIndex = -1;
+			m_MaxIndex = -1;
 			DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0);
 #endif
 		}
@@ -1333,7 +1333,7 @@ namespace JacksonDunstan.NativeCollections
 			get
 			{
 				RequireReadAccess();
-				RequireIndexInSafetyRange(index);
+				RequireParallelForAccess(index);
 
 				return UnsafeUtility.ReadArrayElement<T>(
 					m_State->m_Values,
@@ -1344,7 +1344,7 @@ namespace JacksonDunstan.NativeCollections
 			set
 			{
 				RequireWriteAccess();
-				RequireIndexInSafetyRange(index);
+				RequireParallelForAccess(index);
 
 				UnsafeUtility.WriteArrayElement(
 					m_State->m_Values,
@@ -1407,9 +1407,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = 0;
 				m_State->m_TailIndex = 0;
 
-				// Update safety ranges
-				SetSafetyRange(1);
-
 				// Count the newly-added node
 				m_State->m_Length = 1;
 
@@ -1464,9 +1461,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_TailIndex = endIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + 1);
 
 			// Count the newly-added node
 			m_State->m_Length = endIndex + 1;
@@ -1537,9 +1531,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = copiedHeadIndex;
 				m_State->m_TailIndex = copiedTailIndex;
 
-				// Update safety ranges
-				SetSafetyRange(list.Length);
-
 				// The inserted list's length is now the list's length
 				m_State->m_Length = list.Length;
 
@@ -1577,9 +1568,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_TailIndex = copiedTailIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + list.m_State->m_Length);
 
 			// Count the newly-added nodes
 			m_State->m_Length = endIndex + list.m_State->m_Length;
@@ -1648,9 +1636,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = copiedHeadIndex;
 				m_State->m_TailIndex = copiedTailIndex;
 
-				// Update safety ranges
-				SetSafetyRange(array.Length);
-
 				// The inserted array's length is now the list's length
 				m_State->m_Length = array.Length;
 
@@ -1688,9 +1673,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_TailIndex = copiedTailIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + array.Length);
 
 			// Count the newly-added nodes
 			m_State->m_Length = endIndex + array.Length;
@@ -1756,9 +1738,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = copiedHeadIndex;
 				m_State->m_TailIndex = copiedTailIndex;
 
-				// Update safety ranges
-				SetSafetyRange(array.Length);
-
 				// The inserted array's length is now the list's length
 				m_State->m_Length = array.Length;
 
@@ -1796,9 +1775,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_TailIndex = copiedTailIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + array.Length);
 
 			// Count the newly-added nodes
 			m_State->m_Length = endIndex + array.Length;
@@ -1884,9 +1860,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = copiedHeadIndex;
 				m_State->m_TailIndex = copiedTailIndex;
 
-				// Update safety ranges
-				SetSafetyRange(numInsertNodes);
-
 				// The inserted list's length is now the list's length
 				m_State->m_Length = numInsertNodes;
 
@@ -1924,9 +1897,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_TailIndex = copiedTailIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + numInsertNodes);
 
 			// Count the newly-added nodes
 			m_State->m_Length = endIndex + numInsertNodes;
@@ -2013,9 +1983,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = copiedHeadIndex;
 				m_State->m_TailIndex = copiedTailIndex;
 
-				// Update safety ranges
-				SetSafetyRange(length);
-
 				// The inserted array's length is now the list's length
 				m_State->m_Length = length;
 
@@ -2058,9 +2025,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_TailIndex = copiedTailIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + length);
 
 			// Count the newly-added nodes
 			m_State->m_Length = endIndex + length;
@@ -2148,9 +2112,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = copiedHeadIndex;
 				m_State->m_TailIndex = copiedTailIndex;
 
-				// Update safety ranges
-				SetSafetyRange(length);
-
 				// The inserted array's length is now the list's length
 				m_State->m_Length = length;
 
@@ -2193,9 +2154,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_TailIndex = copiedTailIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + length);
 
 			// Count the newly-added nodes
 			m_State->m_Length = endIndex + length;
@@ -2258,9 +2216,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = 0;
 				m_State->m_TailIndex = 0;
 
-				// Update safety ranges
-				SetSafetyRange(1);
-
 				// Count the newly-added node
 				m_State->m_Length = 1;
 
@@ -2309,9 +2264,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_HeadIndex = endIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + 1);
 
 			// Count the newly-added node
 			m_State->m_Length = endIndex + 1;
@@ -2382,9 +2334,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = copiedHeadIndex;
 				m_State->m_TailIndex = copiedTailIndex;
 
-				// Update safety ranges
-				SetSafetyRange(list.Length);
-
 				// The inserted list's length is now the list's length
 				m_State->m_Length = list.Length;
 
@@ -2422,9 +2371,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_HeadIndex = copiedHeadIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + list.m_State->m_Length);
 
 			// Count the newly-added nodes
 			m_State->m_Length = endIndex + list.m_State->m_Length;
@@ -2493,9 +2439,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = copiedHeadIndex;
 				m_State->m_TailIndex = copiedTailIndex;
 
-				// Update safety ranges
-				SetSafetyRange(array.Length);
-
 				// The inserted array's length is now the list's length
 				m_State->m_Length = array.Length;
 
@@ -2533,9 +2476,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_HeadIndex = copiedHeadIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + array.Length);
 
 			// Count the newly-added nodes
 			m_State->m_Length = endIndex + array.Length;
@@ -2601,9 +2541,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = copiedHeadIndex;
 				m_State->m_TailIndex = copiedTailIndex;
 
-				// Update safety ranges
-				SetSafetyRange(array.Length);
-
 				// The inserted array's length is now the list's length
 				m_State->m_Length = array.Length;
 
@@ -2641,9 +2578,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_HeadIndex = copiedHeadIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + array.Length);
 
 			// Count the newly-added nodes
 			m_State->m_Length = endIndex + array.Length;
@@ -2730,9 +2664,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = copiedHeadIndex;
 				m_State->m_TailIndex = copiedTailIndex;
 
-				// Update safety ranges
-				SetSafetyRange(numInsertNodes);
-
 				// The inserted list's length is now the list's length
 				m_State->m_Length = numInsertNodes;
 
@@ -2770,9 +2701,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_HeadIndex = copiedHeadIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + numInsertNodes);
 
 			// Count the newly-added nodes
 			m_State->m_Length = endIndex + numInsertNodes;
@@ -2859,9 +2787,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = copiedHeadIndex;
 				m_State->m_TailIndex = copiedTailIndex;
 
-				// Update safety ranges
-				SetSafetyRange(length);
-
 				// The inserted array's length is now the list's length
 				m_State->m_Length = length;
 
@@ -2904,9 +2829,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_HeadIndex = copiedHeadIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + length);
 
 			// Count the newly-added nodes
 			m_State->m_Length = endIndex + length;
@@ -2994,9 +2916,6 @@ namespace JacksonDunstan.NativeCollections
 				m_State->m_HeadIndex = copiedHeadIndex;
 				m_State->m_TailIndex = copiedTailIndex;
 
-				// Update safety ranges
-				SetSafetyRange(length);
-
 				// The inserted array's length is now the list's length
 				m_State->m_Length = length;
 
@@ -3039,9 +2958,6 @@ namespace JacksonDunstan.NativeCollections
 			{
 				m_State->m_HeadIndex = copiedHeadIndex;
 			}
-
-			// Update safety ranges
-			SetSafetyRange(endIndex + length);
 
 			// Count the newly-added nodes
 			m_State->m_Length = endIndex + length;
@@ -3195,9 +3111,6 @@ namespace JacksonDunstan.NativeCollections
 			// Set the new length
 			m_State->m_Length = newLength;
 
-			// Update safety ranges
-			SetSafetyRange(newLength);
-
 			// Invalidate all enumerators
 			m_State->m_Version++;
 
@@ -3227,9 +3140,6 @@ namespace JacksonDunstan.NativeCollections
 			m_State->m_TailIndex = -1;
 			m_State->m_Length = 0;
 			m_State->m_Version++;
-
-			// Update safety ranges
-			SetSafetyRange(0);
 		}
 
 		/// <summary>
@@ -3296,8 +3206,8 @@ namespace JacksonDunstan.NativeCollections
 				&& b.IsValidFor(this)
 				&& a.m_Index != b.m_Index)
 			{
-				RequireIndexInSafetyRange(a.m_Index);
-				RequireIndexInSafetyRange(b.m_Index);
+				RequireParallelForAccess(a.m_Index);
+				RequireParallelForAccess(b.m_Index);
 
 				// Read A to temp
 				T temp = UnsafeUtility.ReadArrayElement<T>(
@@ -3463,7 +3373,7 @@ namespace JacksonDunstan.NativeCollections
 			while (length > 0)
 			{
 				// Copy the node's value
-				RequireIndexInSafetyRange(srcEnumerator.m_Index);
+				RequireParallelForAccess(srcEnumerator.m_Index);
 				array[destIndex] = UnsafeUtility.ReadArrayElement<T>(
 					m_State->m_Values,
 					srcEnumerator.m_Index);
@@ -3583,7 +3493,7 @@ namespace JacksonDunstan.NativeCollections
 			while (length > 0)
 			{
 				// Copy the node's value
-				RequireIndexInSafetyRange(srcEnumerator.m_Index);
+				RequireParallelForAccess(srcEnumerator.m_Index);
 				array[destIndex] = UnsafeUtility.ReadArrayElement<T>(
 					m_State->m_Values,
 					srcEnumerator.m_Index);
@@ -3711,7 +3621,7 @@ namespace JacksonDunstan.NativeCollections
 			while (length > 0)
 			{
 				// Copy the node's value
-				RequireIndexInSafetyRange(srcEnumerator.m_Index);
+				RequireParallelForAccess(srcEnumerator.m_Index);
 				array[destIndex] = UnsafeUtility.ReadArrayElement<T>(
 					m_State->m_Values,
 					srcEnumerator.m_Index);
@@ -3841,7 +3751,7 @@ namespace JacksonDunstan.NativeCollections
 			while (length > 0)
 			{
 				// Copy the node's value
-				RequireIndexInSafetyRange(srcEnumerator.m_Index);
+				RequireParallelForAccess(srcEnumerator.m_Index);
 				array[destIndex] = UnsafeUtility.ReadArrayElement<T>(
 					m_State->m_Values,
 					srcEnumerator.m_Index);
@@ -3916,6 +3826,24 @@ namespace JacksonDunstan.NativeCollections
 		}
 
 		/// <summary>
+		/// Prepare the list for usage in a ParallelFor job
+		/// 
+		/// This operation requires write access to the full list.
+		/// 
+		/// This complexity of this operation is O(1)
+		/// </summary>
+		[WriteAccessRequired]
+		public void PrepareForParallelForJob()
+		{
+			RequireWriteAccess();
+			RequireFullListSafetyCheckBounds();
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+			m_Length = m_State->m_Length;
+#endif
+		}
+
+		/// <summary>
 		/// Release the list's unmanaged memory. Do not use it after this. Do
 		/// not call <see cref="Dispose"/> on copies of the list either.
 		/// 
@@ -3987,8 +3915,8 @@ namespace JacksonDunstan.NativeCollections
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		[BurstDiscard]
 		public void TestUseOnlySetParallelForSafetyCheckRange(
-			int minIndex,
-			int maxIndex)
+			int minIndex = -1,
+			int maxIndex = -1)
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 			m_MinIndex = minIndex;
@@ -4505,44 +4433,10 @@ namespace JacksonDunstan.NativeCollections
 		}
 
 		/// <summary>
-		/// Update the safety range's m_Length and also m_MaxIndex if it was
-		/// at the end of the array and the list isn't currently being used by
-		/// a ParallelFor job.
-		/// </summary>
-		/// 
-		/// <param name="length">
-		/// New length to set
-		/// </param>
-		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		private void SetSafetyRange(int length)
-		{
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-			// Max is at the last element, so it's a candidate for adjustment.
-			// We don't want to adjust it if we're in the middle of a
-			// ParallelFor job though since we'd then widen the acceptable
-			// range of access which could cause data contention issues among
-			// parallel executions of the same job. So check for that case and
-			// only adjust the max if the min is zero, as it would only be
-			// outside of a ParallelFor job execution. This is the case because
-			// the min and max are set during the job execution with the min
-			// only being zero when the job is processing the first element,
-			// which wouldn't be the case if the max is also at the last
-			// element.
-			if (m_MaxIndex == m_Length - 1 && m_MinIndex == 0)
-			{
-				m_MaxIndex = length - 1;
-			}
-
-			m_Length = length;
-#endif
-		}
-
-		/// <summary>
 		/// Throw an exception when an index is out of the safety check bounds:
 		///   [m_MinIndex, m_MaxIndex]
-		/// and the list is being used by a ParallelFor job or when the index
-		/// is out of the capacity:
-		///   [0, state->Capacity]
+		/// or m_Length doesn't equal m_State->m_Length and the list is being
+		/// used by a ParallelFor job
 		/// </summary>
 		/// 
 		/// <param name="index">
@@ -4550,34 +4444,35 @@ namespace JacksonDunstan.NativeCollections
 		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
 		[BurstDiscard]
-		private void RequireIndexInSafetyRange(int index)
+		private void RequireParallelForAccess(int index)
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-			// The index is out of the safety check bounds and the min or max
-			// is set to their non-default values indicating that the list is
-			// being used in a ParallelFor job.
-			if (
-				(index < m_MinIndex || index > m_MaxIndex)
-				&& (m_MinIndex != 0 || m_MaxIndex != m_Length - 1))
+			if (m_MinIndex != -1 || m_MaxIndex != -1)
 			{
-				throw new IndexOutOfRangeException(
-					"Index " + index + " is out of restricted " +
-					"ParallelFor range [" + m_MinIndex +
-					"..." + m_MaxIndex + "] with list length " + m_Length +
-					" in ReadWriteBuffer.\n" +
-					"ReadWriteBuffers are restricted to only read and " +
-					"write the node at the job index. You can " +
-					"use double buffering strategies to avoid race " +
-					"conditions due to reading and writing in parallel " +
-					"to the same nodes from a ParallelFor job.");
-			}
+				// m_Length isn't synchronized
+				if (m_Length != m_State->m_Length)
+				{
+					throw new IndexOutOfRangeException(
+						"List can't be used in a ParallelFor job. Call " +
+						"PrepareForParallelFor before executing the job. The " +
+						"ParallelFor job has index range [" + m_MinIndex
+						+ ", " + m_MaxIndex + "].");
+				}
 
-			// The index is out of the capacity
-			if (index < 0 || index > m_State->m_Capacity)
-			{
-				throw new IndexOutOfRangeException(
-					"Index " + index + " is out of range of '" +
-					m_State->m_Capacity + "' Capacity.");
+				// The index is out of bounds
+				if (index < m_MinIndex || index > m_MaxIndex)
+				{
+					throw new IndexOutOfRangeException(
+						"Index " + index + " is out of restricted " +
+						"ParallelFor range [" + m_MinIndex +
+						"..." + m_MaxIndex + "] with list length " + m_Length +
+						" in ReadWriteBuffer.\n" +
+						"ReadWriteBuffers are restricted to only read and " +
+						"write the node at the job index. You can " +
+						"use double buffering strategies to avoid race " +
+						"conditions due to reading and writing in parallel " +
+						"to the same nodes from a ParallelFor job.");
+				}
 			}
 #endif
 		}
@@ -4591,7 +4486,7 @@ namespace JacksonDunstan.NativeCollections
 		private void RequireFullListSafetyCheckBounds()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-			if (m_MinIndex > 0 || m_MaxIndex < m_Length - 1)
+			if (m_MinIndex != -1 || m_MaxIndex != -1)
 			{
 				throw new IndexOutOfRangeException(
 					"This operation cannot be performed from a ParallelFor " +
@@ -4599,7 +4494,9 @@ namespace JacksonDunstan.NativeCollections
 					"required to prevent errors. You can " +
 					"use double buffering strategies to avoid race " +
 					"conditions due to reading and writing in parallel " +
-					"to the same nodes from a ParallelFor job.");
+					"to the same elements from a ParallelFor job. Currently," +
+					"only access to [" + m_MinIndex + ", " + m_MaxIndex
+					+ "] is allowed.");
 			}
 #endif
 		}
