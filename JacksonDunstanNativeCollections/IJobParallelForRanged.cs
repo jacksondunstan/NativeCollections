@@ -116,6 +116,13 @@ namespace JacksonDunstan.NativeCollections
 					out startIndex,
 					out endIndex))
 				{
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+					JobsUtility.PatchBufferMinMaxRanges(
+						bufferRangePatchData,
+						UnsafeUtility.AddressOf(ref jobData),
+						startIndex,
+						endIndex - startIndex);
+#endif
 					jobData.Execute(startIndex, endIndex);
 				}
 			}
