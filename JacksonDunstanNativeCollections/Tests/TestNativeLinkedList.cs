@@ -22,7 +22,10 @@ namespace JacksonDunstan.NativeCollections.Tests
 	{
 		struct NonBlittableStruct
 		{
+// Ignore warning of unused field
+#pragma warning disable CS0649
 			public string String;
+#pragma warning restore CS0649
 		}
 
 		// Create an empty list of int with the given capacity
