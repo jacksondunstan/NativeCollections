@@ -1125,7 +1125,15 @@ namespace JacksonDunstan.NativeCollections
 			m_Length = -1;
 			m_MinIndex = -1;
 			m_MaxIndex = -1;
+#if UNITY_2018_3_OR_NEWER
+			DisposeSentinel.Create(
+				out m_Safety,
+				out m_DisposeSentinel,
+				0,
+				allocator);
+#else
 			DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0);
+#endif
 #endif
 		}
 
