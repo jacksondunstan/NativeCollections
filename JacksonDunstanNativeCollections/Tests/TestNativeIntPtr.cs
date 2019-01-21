@@ -219,7 +219,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		{
 			using (NativeArray<int> array = new NativeArray<int>(
 				3,
-				Allocator.Temp))
+				Allocator.TempJob))
 			{
 				NativeArray<int> arrayCopy = array;
 				arrayCopy[0] = 10;
@@ -227,7 +227,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 				arrayCopy[2] = 30;
 
 				using (NativeIntPtr sum = new NativeIntPtr(
-					Allocator.Temp))
+					Allocator.TempJob))
 				{
 					ParallelForTestJob job = new ParallelForTestJob
 					{

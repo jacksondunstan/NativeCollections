@@ -89,7 +89,11 @@ namespace JacksonDunstan.NativeCollections
 		: IEnumerable<T>
 		, IEnumerable
 		, IDisposable
+#if CSHARP_7_3_OR_NEWER
+		where T : unmanaged
+#else
 		where T : struct
+#endif
 	{
 		/// <summary>
 		/// An enumerable for chunks of <see cref="NativeChunkedList{T}"/>
@@ -2226,6 +2230,8 @@ namespace JacksonDunstan.NativeCollections
 		[BurstDiscard]
 		private static void RequireBlittable()
 		{
+// No check is necessary because C# 7.3 uses `where T : unmanaged`
+#if !CSHARP_7_3_OR_NEWER
 			if (!UnsafeUtility.IsBlittable<T>())
 			{
 				throw new ArgumentException(
@@ -2233,6 +2239,7 @@ namespace JacksonDunstan.NativeCollections
 						"{0} used in NativeChunkedList<{0}> must be blittable",
 						typeof(T)));
 			}
+#endif
 		}
 
 		/// <summary>
@@ -2491,7 +2498,11 @@ namespace JacksonDunstan.NativeCollections
 	/// Type of elements in the list
 	/// </typeparam>
 	internal sealed class NativeChunkedListDebugView<T>
+#if CSHARP_7_3_OR_NEWER
+		where T : unmanaged
+#else
 		where T : struct
+#endif
 	{
 		/// <summary>
 		/// List to view

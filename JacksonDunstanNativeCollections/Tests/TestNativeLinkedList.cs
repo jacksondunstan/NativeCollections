@@ -29,18 +29,36 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		// Create an empty list of int with the given capacity
-		private static NativeLinkedList<int> CreateEmptyNativeLinkedList(int capacity)
+		private static NativeLinkedList<int> CreateEmptyNativeLinkedList(
+			int capacity)
 		{
 			return new NativeLinkedList<int>(capacity, Allocator.Temp);
 		}
 
 		// Create a list of int with the given node values
-		private static NativeLinkedList<int> CreateNativeLinkedList(params int[] values)
+		private static NativeLinkedList<int> CreateNativeLinkedList(
+			params int[] values)
 		{
 			Assert.That(values, Is.Not.Null);
 			NativeLinkedList<int> list = new NativeLinkedList<int>(
 				values.Length,
 				Allocator.Temp);
+			for (int i = 0; i < values.Length; ++i)
+			{
+				list.InsertAfter(list.Tail, values[i]);
+			}
+			return list;
+		}
+
+		// Create a list of int with the given node values
+		private static NativeLinkedList<int> CreateNativeLinkedList(
+			Allocator allocator,
+			params int[] values)
+		{
+			Assert.That(values, Is.Not.Null);
+			NativeLinkedList<int> list = new NativeLinkedList<int>(
+				values.Length,
+				allocator);
 			for (int i = 0; i < values.Length; ++i)
 			{
 				list.InsertAfter(list.Tail, values[i]);
@@ -55,6 +73,22 @@ namespace JacksonDunstan.NativeCollections.Tests
 			NativeArray<int> array = new NativeArray<int>(
 				values.Length,
 				Allocator.Temp);
+			for (int i = 0; i < values.Length; ++i)
+			{
+				array[i] = values[i];
+			}
+			return array;
+		}
+
+		// Create an array of int with the given length
+		private static NativeArray<int> CreateNativeArray(
+			Allocator allocator,
+			params int[] values)
+		{
+			Assert.That(values, Is.Not.Null);
+			NativeArray<int> array = new NativeArray<int>(
+				values.Length,
+				allocator);
 			for (int i = 0; i < values.Length; ++i)
 			{
 				array[i] = values[i];
@@ -237,6 +271,8 @@ namespace JacksonDunstan.NativeCollections.Tests
 			}
 		}
 
+// No test is necessary because C# 7.3 uses `where T : unmanaged`
+#if !CSHARP_7_3_OR_NEWER
 		[Test]
 		public void EmptyConstructorThrowsExceptionIfTypeParamIsNotBlittable()
 		{
@@ -244,6 +280,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 				() => new NativeLinkedList<NonBlittableStruct>(4, Allocator.Temp),
 				Throws.TypeOf<ArgumentException>());
 		}
+#endif
 
 		[Test]
 		public void EmptyConstructorThrowsExceptionForInvalidAllocator()
@@ -282,6 +319,8 @@ namespace JacksonDunstan.NativeCollections.Tests
 			}
 		}
 
+// No test is necessary because C# 7.3 uses `where T : unmanaged`
+#if !CSHARP_7_3_OR_NEWER
 		[Test]
 		public void DefaultValuesConstructorThrowsExceptionIfTypeParamIsNotBlittable()
 		{
@@ -289,6 +328,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 				() => new NativeLinkedList<NonBlittableStruct>(6, 4, Allocator.Temp),
 				Throws.TypeOf<ArgumentException>());
 		}
+#endif
 
 		[Test]
 		public void DefaultValuesConstructorThrowsExceptionForInvalidAllocator()
@@ -5052,9 +5092,15 @@ namespace JacksonDunstan.NativeCollections.Tests
 		[Test]
 		public void JobCanIterateOverLinkedList()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(
+				Allocator.TempJob,
+				10,
+				20,
+				30))
 			{
-				using (NativeArray<int> sum = CreateNativeArray(0))
+				using (NativeArray<int> sum = CreateNativeArray(
+					Allocator.TempJob,
+					0))
 				{
 					TestJob job = new TestJob { List = list, Sum = sum };
 					job.Run();
@@ -5080,9 +5126,15 @@ namespace JacksonDunstan.NativeCollections.Tests
 		[Test]
 		public void ParallelForJobCanIterateOverLinkedList()
 		{
-			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 20, 30))
+			using (NativeLinkedList<int> list = CreateNativeLinkedList(
+				Allocator.TempJob,
+				10,
+				20,
+				30))
 			{
-				using (NativeArray<int> sum = CreateNativeArray(0))
+				using (NativeArray<int> sum = CreateNativeArray(
+					Allocator.TempJob,
+					0))
 				{
 					list.PrepareForParallelForJob();
 					ParallelForTestJob job = new ParallelForTestJob

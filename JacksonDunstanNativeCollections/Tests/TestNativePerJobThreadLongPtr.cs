@@ -236,7 +236,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 		{
 			using (NativeArray<long> array = new NativeArray<long>(
 				3,
-				Allocator.Temp))
+				Allocator.TempJob))
 			{
 				NativeArray<long> arrayCopy = array;
 				arrayCopy[0] = 10;
@@ -244,7 +244,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 				arrayCopy[2] = 30;
 
 				using (NativePerJobThreadLongPtr sum = new NativePerJobThreadLongPtr(
-					Allocator.Temp))
+					Allocator.TempJob))
 				{
 					ParallelForTestJob job = new ParallelForTestJob
 					{

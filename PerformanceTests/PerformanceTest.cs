@@ -270,23 +270,23 @@ public class PerformanceTest : MonoBehaviour
 	{
 		// Create native collections
 
-		NativeArray<int> sum = new NativeArray<int>(1, Allocator.Temp);
+		NativeArray<int> sum = new NativeArray<int>(1, Allocator.TempJob);
 		NativeArray<int> array = new NativeArray<int>(
 			4,
-			Allocator.Temp);
+			Allocator.TempJob);
 		NativeList<int> list = new NativeList<int>(
 			4,
-			Allocator.Temp);
+			Allocator.TempJob);
 		NativeLinkedList<int> linkedList = new NativeLinkedList<int>(
 			4,
-			Allocator.Temp);
+			Allocator.TempJob);
 		NativeChunkedList<int> chunkedList = new NativeChunkedList<int>(
 			4,
 			4,
-			Allocator.Temp);
-		NativeIntPtr nativeIntPtr = new NativeIntPtr(Allocator.Temp);
+			Allocator.TempJob);
+		NativeIntPtr nativeIntPtr = new NativeIntPtr(Allocator.TempJob);
 		NativePerJobThreadIntPtr nativePerJobThreadIntPtr = new NativePerJobThreadIntPtr(
-			Allocator.Temp);
+			Allocator.TempJob);
 
 		// Create jobs
 
@@ -416,120 +416,53 @@ public class PerformanceTest : MonoBehaviour
 
 		// Create native collections
 
-		NativeArray<int> sum = new NativeArray<int>(1, Allocator.Temp);
+		NativeArray<int> sum = new NativeArray<int>(1, Allocator.TempJob);
 		NativeArray<int> array = new NativeArray<int>(
 			size,
-			Allocator.Temp);
+			Allocator.TempJob);
 		NativeList<int> list = new NativeList<int>(
 			0,
-			Allocator.Temp);
+			Allocator.TempJob);
 		NativeLinkedList<int> linkedList = new NativeLinkedList<int>(
 			0,
-			Allocator.Temp);
+			Allocator.TempJob);
 		NativeChunkedList<int> chunkedList = new NativeChunkedList<int>(
 			numElementsPerChunk,
 			0,
-			Allocator.Temp);
-		NativeIntPtr nativeIntPtr = new NativeIntPtr(Allocator.Temp);
+			Allocator.TempJob);
+		NativeIntPtr nativeIntPtr = new NativeIntPtr(Allocator.TempJob);
 		NativePerJobThreadIntPtr nativePerJobThreadIntPtr = new NativePerJobThreadIntPtr(
-			Allocator.Temp);
-
-		// Create jobs
-		ListAddJob listAddJob = new ListAddJob
-		{
-			List = list,
-			NumElementsToAdd = size
-		};
-		LinkedListAddJob linkedListAddJob = new LinkedListAddJob
-		{
-			List = linkedList,
-			NumNodesToInsert = size
-		};
-		ChunkedListAddJob chunkedListAddJob = new ChunkedListAddJob
-		{
-			List = chunkedList,
-			NumElementsToAdd = size
-		};
-		ArrayIterateJob arrayIterateJob = new ArrayIterateJob
-		{
-			Array = array,
-			Sum = sum
-		};
-		ListIterateJob listIterateJob = new ListIterateJob
-		{
-			List = list,
-			Sum = sum
-		};
-		LinkedListIterateJob linkedListIterateJob = new LinkedListIterateJob
-		{
-			List = linkedList,
-			Sum = sum
-		};
-		ChunkedListIterateJob chunkedListIterateJob = new ChunkedListIterateJob
-		{
-			List = chunkedList,
-			Sum = sum
-		};
-		ArrayIterateJobParallelFor arrayIterateJobParallelFor = new ArrayIterateJobParallelFor
-		{
-			Array = array,
-			Sum = sum
-		};
-		LinkedListIterateJobParallelFor linkedListIterateJobParallelFor = new LinkedListIterateJobParallelFor
-		{
-			List = linkedList,
-			Sum = sum
-		};
-		ChunkedListIterateJobParallelFor chunkedListIterateJobParallelFor = new ChunkedListIterateJobParallelFor
-		{
-			List = chunkedList,
-			Sum = sum
-		};
-		LinkedListInsertJob linkedListInsertJob = new LinkedListInsertJob
-		{
-			LinkedList = linkedList,
-			NumElementsToAdd = size
-		};
-		ChunkedListInsertJob chunkedListInsertJob = new ChunkedListInsertJob
-		{
-			List = chunkedList,
-			NumElementsToAdd = size
-		};
-		LinkedListRemoveJob linkedListRemoveJob = new LinkedListRemoveJob
-		{
-			List = linkedList,
-			NumElementsToRemove = size
-		};
-		ChunkedListRemoveJob chunkedListRemoveJob = new ChunkedListRemoveJob
-		{
-			List = chunkedList,
-			NumElementsToRemove = size
-		};
-		NativeIntPtrParallelJob nativeIntPtrParallelJob = new NativeIntPtrParallelJob
-		{
-			Array = array,
-			Sum = nativeIntPtr.GetParallel()
-		};
-		NativePerJobThreadIntPtrParallelJob nativePerJobThreadIntPtrParallelJob = new NativePerJobThreadIntPtrParallelJob
-		{
-			Array = array,
-			Sum = nativePerJobThreadIntPtr.GetParallel()
-		};
+			Allocator.TempJob);
 
 		// Run add jobs
 
 		System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
 
+		ListAddJob listAddJob = new ListAddJob
+		{
+			List = list,
+			NumElementsToAdd = size
+		};
 		sw.Reset();
 		sw.Start();
 		listAddJob.Run();
 		long listAddTicks = sw.ElapsedTicks;
 
+		LinkedListAddJob linkedListAddJob = new LinkedListAddJob
+		{
+			List = linkedList,
+			NumNodesToInsert = size
+		};
 		sw.Reset();
 		sw.Start();
 		linkedListAddJob.Run();
 		long linkedListAddTicks = sw.ElapsedTicks;
 
+		ChunkedListAddJob chunkedListAddJob = new ChunkedListAddJob
+		{
+			List = chunkedList,
+			NumElementsToAdd = size
+		};
 		sw.Reset();
 		sw.Start();
 		chunkedListAddJob.Run();
@@ -537,42 +470,79 @@ public class PerformanceTest : MonoBehaviour
 
 		// Run iterate jobs
 
+		ArrayIterateJob arrayIterateJob = new ArrayIterateJob
+		{
+			Array = array,
+			Sum = sum
+		};
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
 		arrayIterateJob.Run();
 		long arrayIterateTicks = sw.ElapsedTicks;
 
+		ListIterateJob listIterateJob = new ListIterateJob
+		{
+			List = list,
+			Sum = sum
+		};
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
 		listIterateJob.Run();
 		long listIterateTicks = sw.ElapsedTicks;
 
+		LinkedListIterateJob linkedListIterateJob = new LinkedListIterateJob
+		{
+			List = linkedList,
+			Sum = sum
+		};
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
 		linkedListIterateJob.Run();
 		long linkedListIterateTicks = sw.ElapsedTicks;
 
+		ChunkedListIterateJob chunkedListIterateJob = new ChunkedListIterateJob
+		{
+			List = chunkedList,
+			Sum = sum
+		};
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
 		chunkedListIterateJob.Run();
 		long chunkedListIterateTicks = sw.ElapsedTicks;
 
+		ArrayIterateJobParallelFor arrayIterateJobParallelFor = new ArrayIterateJobParallelFor
+		{
+			Array = array,
+			Sum = sum
+		};
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
 		arrayIterateJobParallelFor.Run(size);
 		long arrayIterateParallelForTicks = sw.ElapsedTicks;
 
+		linkedList.PrepareForParallelForJob();
+		LinkedListIterateJobParallelFor linkedListIterateJobParallelFor = new LinkedListIterateJobParallelFor
+		{
+			List = linkedList,
+			Sum = sum
+		};
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
 		linkedListIterateJobParallelFor.Run(size);
 		long linkedListIterateParallelForTicks = sw.ElapsedTicks;
 
+		chunkedList.PrepareForParallelForJob();
+		ChunkedListIterateJobParallelFor chunkedListIterateJobParallelFor = new ChunkedListIterateJobParallelFor
+		{
+			List = chunkedList,
+			Sum = sum
+		};
 		sum[0] = 0;
 		sw.Reset();
 		sw.Start();
@@ -587,11 +557,21 @@ public class PerformanceTest : MonoBehaviour
 
 		// Run insert jobs
 
+		LinkedListInsertJob linkedListInsertJob = new LinkedListInsertJob
+		{
+			LinkedList = linkedList,
+			NumElementsToAdd = size
+		};
 		sw.Reset();
 		sw.Start();
 		linkedListInsertJob.Run();
 		long linkedListInsertTicks = sw.ElapsedTicks;
 
+		ChunkedListInsertJob chunkedListInsertJob = new ChunkedListInsertJob
+		{
+			List = chunkedList,
+			NumElementsToAdd = size
+		};
 		sw.Reset();
 		sw.Start();
 		chunkedListInsertJob.Run();
@@ -599,11 +579,21 @@ public class PerformanceTest : MonoBehaviour
 
 		// Run remove jobs
 
+		LinkedListRemoveJob linkedListRemoveJob = new LinkedListRemoveJob
+		{
+			List = linkedList,
+			NumElementsToRemove = size
+		};
 		sw.Reset();
 		sw.Start();
 		linkedListRemoveJob.Run();
 		long linkedListRemoveTicks = sw.ElapsedTicks;
 
+		ChunkedListRemoveJob chunkedListRemoveJob = new ChunkedListRemoveJob
+		{
+			List = chunkedList,
+			NumElementsToRemove = size
+		};
 		sw.Reset();
 		sw.Start();
 		chunkedListRemoveJob.Run();
@@ -611,11 +601,21 @@ public class PerformanceTest : MonoBehaviour
 
 		// Run NativeIntPtr and NativePerJobThreadIntPtr jobs
 
+		NativeIntPtrParallelJob nativeIntPtrParallelJob = new NativeIntPtrParallelJob
+		{
+			Array = array,
+			Sum = nativeIntPtr.GetParallel()
+		};
 		sw.Reset();
 		sw.Start();
 		nativeIntPtrParallelJob.Run(size);
 		long nativeIntPtrTicks = sw.ElapsedTicks;
 
+		NativePerJobThreadIntPtrParallelJob nativePerJobThreadIntPtrParallelJob = new NativePerJobThreadIntPtrParallelJob
+		{
+			Array = array,
+			Sum = nativePerJobThreadIntPtr.GetParallel()
+		};
 		sw.Reset();
 		sw.Start();
 		nativePerJobThreadIntPtrParallelJob.Run(size);

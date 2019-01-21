@@ -29,12 +29,13 @@ namespace JacksonDunstan.NativeCollections.Tests
 
 		private static NativeChunkedList<int> CreateList(
 			int chunkLength,
-			int capacity)
+			int capacity,
+			Allocator allocator = Allocator.Temp)
 		{
 			return new NativeChunkedList<int>(
 				chunkLength,
 				capacity,
-				Allocator.Temp);
+				allocator);
 		}
 
 		private static NativeChunkedList<int> CreateListValues(
@@ -260,6 +261,8 @@ namespace JacksonDunstan.NativeCollections.Tests
 				Throws.TypeOf<ArgumentException>());
 		}
 
+// No test is necessary because C# 7.3 uses `where T : unmanaged`
+#if !CSHARP_7_3_OR_NEWER
 		[Test]
 		public void ConstructorThrowsExceptionForNonBlittableType()
 		{
@@ -270,6 +273,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 					Allocator.Temp),
 				Throws.TypeOf<ArgumentException>());
 		}
+#endif
 
 		[Test]
 		public void CapacityGetReturnsValuePassedToConstructor()
@@ -2691,13 +2695,16 @@ namespace JacksonDunstan.NativeCollections.Tests
 		[Test]
 		public void IsUsableWithinJob()
 		{
-			using (NativeChunkedList<int> list = CreateList(2, 4))
+			using (NativeChunkedList<int> list = CreateList(
+				2,
+				4,
+				Allocator.TempJob))
 			{
 				AddElements(list, 10, 20, 30, 40);
 
 				using (NativeArray<int> sum = new NativeArray<int>(
 					1,
-					Allocator.Temp))
+					Allocator.TempJob))
 				{
 					new TestJob { List = list, Sum = sum }.Run();
 
@@ -2720,13 +2727,16 @@ namespace JacksonDunstan.NativeCollections.Tests
 		[Test]
 		public void IsUsableWithinParallelForJob()
 		{
-			using (NativeChunkedList<int> list = CreateList(2, 4))
+			using (NativeChunkedList<int> list = CreateList(
+				2,
+				4,
+				Allocator.TempJob))
 			{
 				AddElements(list, 10, 20, 30, 40);
 
 				using (NativeArray<int> sum = new NativeArray<int>(
 					1,
-					Allocator.Temp))
+					Allocator.TempJob))
 				{
 					list.PrepareForParallelForJob();
 					new TestParallelForJob {
@@ -2759,7 +2769,10 @@ namespace JacksonDunstan.NativeCollections.Tests
 		[Test]
 		public void IsUsableWithinParallelForRangedJobRun()
 		{
-			using (NativeChunkedList<int> list = CreateList(2, 4))
+			using (NativeChunkedList<int> list = CreateList(
+				2,
+				4,
+				Allocator.TempJob))
 			{
 				int expectedSum = 0;
 				for (int i = 0; i < 100; ++i)
@@ -2786,7 +2799,10 @@ namespace JacksonDunstan.NativeCollections.Tests
 		[Test]
 		public void IsUsableWithinParallelForRangedJobSchedule()
 		{
-			using (NativeChunkedList<int> list = CreateList(2, 4))
+			using (NativeChunkedList<int> list = CreateList(
+				2,
+				4,
+				Allocator.TempJob))
 			{
 				int expectedSum = 0;
 				for (int i = 0; i < 30; ++i)
@@ -2829,7 +2845,10 @@ namespace JacksonDunstan.NativeCollections.Tests
 		[Test]
 		public void ParallelForJobProcessesEachIndexOnce()
 		{
-			using (NativeChunkedList<int> list = CreateList(2, 4))
+			using (NativeChunkedList<int> list = CreateList(
+				2,
+				4,
+				Allocator.TempJob))
 			{
 				int expectedSum = 0;
 				for (int i = 0; i < 100; ++i)
@@ -2840,7 +2859,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 
 				using (NativeArray<int> counts = new NativeArray<int>(
 					list.Length,
-					Allocator.Temp))
+					Allocator.TempJob))
 				{
 					JobHandle handle = new TestParallelForRangedJobCounts
 					{

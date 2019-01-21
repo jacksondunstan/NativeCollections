@@ -89,7 +89,11 @@ namespace JacksonDunstan.NativeCollections
 		: IEnumerable<T>
 		, IEnumerable
 		, IDisposable
+#if CSHARP_7_3_OR_NEWER
+		where T : unmanaged
+#else
 		where T : struct
+#endif
 	{
 		/// <summary>
 		/// An enumerator for <see cref="NativeLinkedList{T}"/>
@@ -4431,6 +4435,8 @@ namespace JacksonDunstan.NativeCollections
 		[BurstDiscard]
 		private static void RequireBlittable()
 		{
+// No check is necessary because C# 7.3 uses `where T : unmanaged`
+#if !CSHARP_7_3_OR_NEWER
 			if (!UnsafeUtility.IsBlittable<T>())
 			{
 				throw new ArgumentException(
@@ -4438,6 +4444,7 @@ namespace JacksonDunstan.NativeCollections
 						"{0} used in NativeLinkedList<{0}> must be blittable",
 						typeof(T)));
 			}
+#endif
 		}
 
 		/// <summary>
@@ -4655,7 +4662,11 @@ namespace JacksonDunstan.NativeCollections
 	/// Type of nodes in the list
 	/// </typeparam>
 	internal sealed class NativeLinkedListDebugView<T>
+#if CSHARP_7_3_OR_NEWER
+		where T : unmanaged
+#else
 		where T : struct
+#endif
 	{
 		/// <summary>
 		/// List to view
