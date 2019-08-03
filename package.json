@@ -1,0 +1,28 @@
+{
+  "name": "com.jacksondunstan.native-collections",
+  "version": "1.0.0",
+  "displayName": "Native Collections",
+  "description": "A small library of native collections like NativeArray<T> suitable to be used with Unity 2018.1 or greater. No additional packages (e.g. ECS or Burst) are required.",
+  "unity": "2018.1",
+  "unityRelease": "0f2",
+  "keywords": [
+    "Native",
+    "Collections"
+  ],
+  "author": {
+    "name": "Jackson Dunstan",
+    "email": "jackson@jacksondunstan.com",
+    "url": "https://jacksondunstan.com/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jacksondunstan/NativeCollections"
+  },
+  "samples": [
+    {
+      "displayName": "Performance Tests",
+      "description": "",
+      "path": "Samples~/PerformanceTests"
+    }
+  ]
+}

@@ -4,7 +4,13 @@ A small library of native collections like `NativeArray<T>` suitable to be used 
 
 # Getting Started
 
-Clone or download this repository and copy the `JacksonDunstanNativeCollections` directory somewhere inside your Unity project's `Assets` directory.
+Add this as a package to your project by adding the below as an entry to the dependencies in the `/Package/manifest.json` file:
+
+```json
+"com.jacksondunstan.native-collections": "git@github.com:jacksondunstan/NativeCollections.git"
+```
+
+For more information on adding git repositories as a package see the [Git support on Package Manager](https://forum.unity.com/threads/git-support-on-package-manager.573673/) on the Unity Forum.
 
 # NativeLinkedList<T>
 
@@ -46,7 +52,7 @@ for (int i = 0; i < list.Length; ++i)
 list.Dispose();
 ```
 
-There is much more functionality available. See [the source](JacksonDunstanNativeCollections/NativeLinkedList.cs) for more.
+There is much more functionality available. See [the source](Runtime/NativeLinkedList.cs) for more.
 
 To read about the making of this type, see this [article series](https://jacksondunstan.com/articles/4865).
 
@@ -93,7 +99,7 @@ foreach (var e in list.Chunks)
 list.Dispose();
 ```
 
-There is much more functionality available. See [the source](JacksonDunstanNativeCollections/NativeChunkedList.cs) for more.
+There is much more functionality available. See [the source](Runtime/NativeChunkedList.cs) for more.
 
 To read about the making of this type, see this [article series](https://jacksondunstan.com/articles/4963).
 
@@ -189,4 +195,4 @@ To read about the making of this type, see this [article](https://jacksondunstan
 
 # License
 
-[MIT](LICENSE.txt)
+[MIT](LICENSE.md)

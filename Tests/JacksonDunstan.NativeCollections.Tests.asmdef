@@ -1,7 +1,7 @@
 {
-    "name": "JacksonDunstanNativeCollectionsTestsAssembly",
+    "name": "JacksonDunstan.NativeCollections.Tests",
     "references": [
-        "JacksonDunstanNativeCollectionsAssembly"
+        "JacksonDunstan.NativeCollections"
     ],
     "optionalUnityReferences": [
         "TestAssemblies"
