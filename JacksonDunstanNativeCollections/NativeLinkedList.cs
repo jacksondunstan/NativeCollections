@@ -725,7 +725,6 @@ namespace JacksonDunstan.NativeCollections
 			/// job but set lower by ParallelFor jobs.
 			/// </param>
 			[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-			[BurstDiscard]
 			public void TestUseOnlySetParallelForSafetyCheckRange(
 				int minIndex = -1,
 				int maxIndex = -1)
@@ -747,7 +746,6 @@ namespace JacksonDunstan.NativeCollections
 			/// enumerator's list
 			/// </param>
 			[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-			[BurstDiscard]
 			public void TestUseOnlySetAllowReadAndWriteAccess(
 				bool allowReadOrWriteAccess)
 			{
@@ -3925,7 +3923,6 @@ namespace JacksonDunstan.NativeCollections
 		/// but set lower by ParallelFor jobs.
 		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		public void TestUseOnlySetParallelForSafetyCheckRange(
 			int minIndex = -1,
 			int maxIndex = -1)
@@ -3945,7 +3942,6 @@ namespace JacksonDunstan.NativeCollections
 		/// If both read and write access should be allowed
 		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		public void TestUseOnlySetAllowReadAndWriteAccess(
 			bool allowReadOrWriteAccess)
 		{
@@ -4432,7 +4428,6 @@ namespace JacksonDunstan.NativeCollections
 		/// <summary>
 		/// Throw an exception if the given type parameter is not blittable
 		/// </summary>
-		[BurstDiscard]
 		private static void RequireBlittable()
 		{
 // No check is necessary because C# 7.3 uses `where T : unmanaged`
@@ -4440,9 +4435,7 @@ namespace JacksonDunstan.NativeCollections
 			if (!UnsafeUtility.IsBlittable<T>())
 			{
 				throw new ArgumentException(
-					string.Format(
-						"{0} used in NativeLinkedList<{0}> must be blittable",
-						typeof(T)));
+					"Type used in NativeLinkedList<{0}> must be blittable");
 			}
 #endif
 		}
@@ -4458,7 +4451,6 @@ namespace JacksonDunstan.NativeCollections
 		/// Index that must be in the safety check bounds
 		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireParallelForAccess(int index)
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -4469,22 +4461,17 @@ namespace JacksonDunstan.NativeCollections
 				{
 					throw new IndexOutOfRangeException(
 						"List can't be used in a ParallelFor job. Call " +
-						"PrepareForParallelFor before executing the job. The " +
-						"ParallelFor job has index range [" + m_MinIndex
-						+ ", " + m_MaxIndex + "].");
+						"PrepareForParallelFor before executing the job.");
 				}
 
 				// The index is out of bounds
 				if (index < m_MinIndex || index > m_MaxIndex)
 				{
 					throw new IndexOutOfRangeException(
-						"Index " + index + " is out of restricted " +
-						"ParallelFor range [" + m_MinIndex +
-						"..." + m_MaxIndex + "] with list length " + m_Length +
-						" in ReadWriteBuffer.\n" +
-						"ReadWriteBuffers are restricted to only read and " +
-						"write the node at the job index. You can " +
-						"use double buffering strategies to avoid race " +
+						"Index is out of restricted ParallelFor range in " +
+						"ReadWriteBuffer. ReadWriteBuffers are restricted to " +
+						"only read and write the node at the job index. You " +
+						"can  use double buffering strategies to avoid race " +
 						"conditions due to reading and writing in parallel " +
 						"to the same nodes from a ParallelFor job.");
 				}
@@ -4497,7 +4484,6 @@ namespace JacksonDunstan.NativeCollections
 		/// full list.
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireFullListSafetyCheckBounds()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -4509,9 +4495,7 @@ namespace JacksonDunstan.NativeCollections
 					"required to prevent errors. You can " +
 					"use double buffering strategies to avoid race " +
 					"conditions due to reading and writing in parallel " +
-					"to the same elements from a ParallelFor job. Currently," +
-					"only access to [" + m_MinIndex + ", " + m_MaxIndex
-					+ "] is allowed.");
+					"to the same elements from a ParallelFor job.");
 			}
 #endif
 		}
@@ -4520,7 +4504,6 @@ namespace JacksonDunstan.NativeCollections
 		/// Throw an exception if the list isn't readable
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireReadAccess()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -4532,7 +4515,6 @@ namespace JacksonDunstan.NativeCollections
 		/// Throw an exception if the list isn't writable
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireWriteAccess()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -4548,7 +4530,6 @@ namespace JacksonDunstan.NativeCollections
 		/// Array that must not be null
 		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireNonNullManagedArray(T[] array)
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -4578,7 +4559,6 @@ namespace JacksonDunstan.NativeCollections
 		/// Number of elements after the startIndex that must be in bounds
 		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireValidRangeWithinArray(
 			NativeArray<T> array,
 			int startIndex,
@@ -4588,21 +4568,20 @@ namespace JacksonDunstan.NativeCollections
 			if (length < 0)
 			{
 				throw new IndexOutOfRangeException(
-					"Invalid range length (" + length + ") specified. Range " +
-					"lengths must be non-negative");
+					"Invalid range length specified. Range lengths must be " +
+					"non-negative");
 			}
 			if (startIndex < 0)
 			{
 				throw new IndexOutOfRangeException(
-					"Invalid range start index (" + startIndex + ") " +
-					"specified. Range start indices must be non-negative.");
+					"Invalid range start index specified. Range start " +
+					"indices must be non-negative.");
 			}
 			if (startIndex + length > array.Length)
 			{
 				throw new IndexOutOfRangeException(
-					"Invalid range end index (" + (startIndex + length - 1) + ") " +
-					"specified for array with length (" + array.Length + ")." +
-					"Range end indices must be less than the array length.");
+					"Invalid range end index specified for array. Range end " +
+					"indices must be less than the array length.");
 			}
 #endif
 		}
@@ -4624,7 +4603,6 @@ namespace JacksonDunstan.NativeCollections
 		/// Number of elements after the startIndex that must be in bounds
 		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireValidRangeWithinArray(
 			T[] array,
 			int startIndex,
@@ -4634,21 +4612,20 @@ namespace JacksonDunstan.NativeCollections
 			if (length < 0)
 			{
 				throw new IndexOutOfRangeException(
-					"Invalid range length (" + length + ") specified. Range " +
-					"lengths must be non-negative");
+					"Invalid range length specified. Range lengths must be " +
+					"non-negative");
 			}
 			if (startIndex < 0)
 			{
 				throw new IndexOutOfRangeException(
-					"Invalid range start index (" + startIndex + ") " +
-					"specified. Range start indices must be non-negative.");
+					"Invalid range start index specified. Range start " +
+					"indices must be non-negative.");
 			}
 			if (startIndex + length > array.Length)
 			{
 				throw new IndexOutOfRangeException(
-					"Invalid range end index (" + (startIndex + length - 1) + ") " +
-					"specified for array with length (" + array.Length + ")." +
-					"Range end indices must be less than the array length.");
+					"Invalid range end index specified for array. Range end " +
+					"indices must be less than the array length.");
 			}
 #endif
 		}
