@@ -19,7 +19,7 @@ public class PerformanceTest : MonoBehaviour
 		{
 			for (int i = 0; i < NumElementsToAdd; ++i)
 			{
-				List.Add(1);
+				List.Add(i);
 			}
 		}
 	}
@@ -35,7 +35,7 @@ public class PerformanceTest : MonoBehaviour
 			NativeLinkedList<int>.Enumerator e = List.Tail;
 			for (int i = 0; i < NumNodesToInsert; ++i)
 			{
-				e = List.InsertAfter(e, 1);
+				e = List.InsertAfter(e, i);
 			}
 		}
 	}
@@ -50,7 +50,22 @@ public class PerformanceTest : MonoBehaviour
 		{
 			for (int i = 0; i < NumElementsToAdd; ++i)
 			{
-				List.Add(1);
+				List.Add(i);
+			}
+		}
+	}
+
+	[BurstCompile]
+	struct HashSetAddJob : IJob
+	{
+		public NativeHashSet<int> Set;
+		public int NumElementsToAdd;
+
+		public void Execute()
+		{
+			for (int i = 0; i < NumElementsToAdd; ++i)
+			{
+				Set.TryAdd(i);
 			}
 		}
 	}
@@ -238,6 +253,21 @@ public class PerformanceTest : MonoBehaviour
 		}
 	}
 
+	[BurstCompile]
+	struct HashSetRemoveJob : IJob
+	{
+		public NativeHashSet<int> Set;
+		public int NumElementsToRemove;
+
+		public void Execute()
+		{
+			for (int i = 0; i < Set.Length; ++i)
+			{
+				Set.Remove(i);
+			}
+		}
+	}
+
 	// NativeIntPtr and NativePerJobThreadIntPtr jobs
 
 	[BurstCompile]
@@ -284,6 +314,9 @@ public class PerformanceTest : MonoBehaviour
 			4,
 			4,
 			Allocator.TempJob);
+		NativeHashSet<int> hashSet = new NativeHashSet<int>(
+			4,
+			Allocator.TempJob);
 		NativeIntPtr nativeIntPtr = new NativeIntPtr(Allocator.TempJob);
 		NativePerJobThreadIntPtr nativePerJobThreadIntPtr = new NativePerJobThreadIntPtr(
 			Allocator.TempJob);
@@ -301,6 +334,10 @@ public class PerformanceTest : MonoBehaviour
 		ChunkedListAddJob chunkedListAddJob = new ChunkedListAddJob
 		{
 			List = chunkedList
+		};
+		HashSetAddJob hashSetAddJob = new HashSetAddJob
+		{
+			Set = hashSet
 		};
 		ArrayIterateJob arrayIterateJob = new ArrayIterateJob
 		{
@@ -353,6 +390,10 @@ public class PerformanceTest : MonoBehaviour
 		{
 			List = chunkedList
 		};
+		HashSetRemoveJob hashSetRemoveJob = new HashSetRemoveJob
+		{
+			Set = hashSet
+		};
 		NativeIntPtrParallelJob nativeIntPtrParallelJob = new NativeIntPtrParallelJob
 		{
 			Array = array,
@@ -369,6 +410,7 @@ public class PerformanceTest : MonoBehaviour
 		listAddJob.Run();
 		linkedListAddJob.Run();
 		chunkedListAddJob.Run();
+		hashSetAddJob.Run();
 		arrayIterateJob.Run();
 		listIterateJob.Run();
 		linkedListIterateJob.Run();
@@ -379,10 +421,12 @@ public class PerformanceTest : MonoBehaviour
 		list.Clear();
 		linkedList.Clear();
 		chunkedList.Clear();
+		hashSet.Clear();
 		linkedListInsertJob.Run();
 		chunkedListInsertJob.Run();
 		linkedListRemoveJob.Run();
 		chunkedListRemoveJob.Run();
+		hashSetRemoveJob.Run();
 		nativeIntPtrParallelJob.Run(array.Length);
 		nativePerJobThreadIntPtrParallelJob.Run(array.Length);
 
@@ -393,6 +437,7 @@ public class PerformanceTest : MonoBehaviour
 		list.Dispose();
 		linkedList.Dispose();
 		chunkedList.Dispose();
+		hashSet.Dispose();
 		nativeIntPtr.Dispose();
 		nativePerJobThreadIntPtr.Dispose();
 	}
@@ -428,6 +473,9 @@ public class PerformanceTest : MonoBehaviour
 			Allocator.TempJob);
 		NativeChunkedList<int> chunkedList = new NativeChunkedList<int>(
 			numElementsPerChunk,
+			0,
+			Allocator.TempJob);
+		NativeHashSet<int> hashSet = new NativeHashSet<int>(
 			0,
 			Allocator.TempJob);
 		NativeIntPtr nativeIntPtr = new NativeIntPtr(Allocator.TempJob);
@@ -467,6 +515,16 @@ public class PerformanceTest : MonoBehaviour
 		sw.Start();
 		chunkedListAddJob.Run();
 		long chunkedListAddTicks = sw.ElapsedTicks;
+
+		HashSetAddJob hashSetAddJob = new HashSetAddJob
+		{
+			Set = hashSet,
+			NumElementsToAdd = size
+		};
+		sw.Reset();
+		sw.Start();
+		hashSetAddJob.Run();
+		long hashSetAddTicks = sw.ElapsedTicks;
 
 		// Run iterate jobs
 
@@ -599,6 +657,16 @@ public class PerformanceTest : MonoBehaviour
 		chunkedListRemoveJob.Run();
 		long chunkedListRemoveTicks = sw.ElapsedTicks;
 
+		HashSetRemoveJob hashSetRemoveJob = new HashSetRemoveJob
+		{
+			Set = hashSet,
+			NumElementsToRemove = size
+		};
+		sw.Reset();
+		sw.Start();
+		hashSetRemoveJob.Run();
+		long hashSetRemoveTicks = sw.ElapsedTicks;
+
 		// Run NativeIntPtr and NativePerJobThreadIntPtr jobs
 
 		NativeIntPtrParallelJob nativeIntPtrParallelJob = new NativeIntPtrParallelJob
@@ -623,12 +691,12 @@ public class PerformanceTest : MonoBehaviour
 
 		// Report results
 		Debug.Log(
-			"Operation,Job Type,NativeArray,NativeList,NativeLinkedList,NativeChunkedList\n" +
-			"Add,Single,"          + "n/a"                        + ","     + listAddTicks     + "," + linkedListAddTicks                + "," + chunkedListAddTicks                + "\n" +
-			"Iterate,Single,"      + arrayIterateTicks            + ","     + listIterateTicks + "," + linkedListIterateTicks            + "," + chunkedListIterateTicks            + "\n" +
-			"Iterate,ParallelFor," + arrayIterateParallelForTicks + ","     + "n/a"            + "," + linkedListIterateParallelForTicks + "," + chunkedListIterateParallelForTicks + "\n" +
-			"Insert,Single,"       + "n/a"                        + ","     + "n/a"            + "," + linkedListInsertTicks             + "," + chunkedListInsertTicks             + "\n" +
-			"Remove,Single,"       + "n/a"                        + ","     + "n/a"            + "," + linkedListRemoveTicks             + "," + chunkedListRemoveTicks);
+			"Operation,Job Type,NativeArray,NativeList,NativeLinkedList,NativeChunkedList,NativeHashSet\n" +
+			"Add,Single,"          + "n/a"                        + ","     + listAddTicks     + "," + linkedListAddTicks                + "," + chunkedListAddTicks                + "," + hashSetAddTicks    + "\n" +
+			"Iterate,Single,"      + arrayIterateTicks            + ","     + listIterateTicks + "," + linkedListIterateTicks            + "," + chunkedListIterateTicks            + "," + "n/a"              + "\n" +
+			"Iterate,ParallelFor," + arrayIterateParallelForTicks + ","     + "n/a"            + "," + linkedListIterateParallelForTicks + "," + chunkedListIterateParallelForTicks + "," + "n/a"              + "\n" +
+			"Insert,Single,"       + "n/a"                        + ","     + "n/a"            + "," + linkedListInsertTicks             + "," + chunkedListInsertTicks             + "," + "n/a"              + "\n" +
+			"Remove,Single,"       + "n/a"                        + ","     + "n/a"            + "," + linkedListRemoveTicks             + "," + chunkedListRemoveTicks             + "," + hashSetRemoveTicks );
 		Debug.Log(
 			"Operation,Job Type,NativeIntPtr,NativePerJobThreadIntPtr\n" +
 			"Sum,ParallelFor," + nativeIntPtrTicks + "," + nativePerJobThreadIntPtrTicks);
@@ -639,6 +707,7 @@ public class PerformanceTest : MonoBehaviour
 		list.Dispose();
 		linkedList.Dispose();
 		chunkedList.Dispose();
+		hashSet.Dispose();
 		nativeIntPtr.Dispose();
 		nativePerJobThreadIntPtr.Dispose();
 
