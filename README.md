@@ -97,6 +97,29 @@ There is much more functionality available. See [the source](JacksonDunstanNativ
 
 To read about the making of this type, see this [article series](https://jacksondunstan.com/articles/4963).
 
+# NativeHashSet<T>
+
+This is a collection of unique keys that aren't mapped to values. Here's how to use it:
+
+```csharp
+// Create an empty set
+NativeHashSet<int> set = new NativeHashSet<int>(100, Allocator.Persistent);
+
+// Add some keys
+set.TryAdd(123);
+set.TryAdd(456);
+
+// Check for containment
+set.Contains(123); // true
+set.Contains(1000); // false
+
+// Remove a key
+set.Remove(123);
+```
+
+There is much more functionality available. See [the source](JacksonDunstanNativeCollections/NativeHashSet.cs) for more.
+
+To read about the making of this type, see this [article](https://jacksondunstan.com/articles/5346).
 # NativeIntPtr and NativeLongPtr
 
 These are pointers to a single `int` or `long`, useful for counters among other purposes. Here's how to use `NativeIntPtr` (`NativeLongPtr` is identical):
