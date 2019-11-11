@@ -120,6 +120,38 @@ set.Remove(123);
 There is much more functionality available. See [the source](JacksonDunstanNativeCollections/NativeHashSet.cs) for more.
 
 To read about the making of this type, see this [article](https://jacksondunstan.com/articles/5346).
+
+# NativeArray2D<T>
+
+This is a 2D version of `NativeArray<T>`. Here's how to use it:
+
+```csharp
+// Create a 2x3 empty array
+NativeArray<int> array = new NativeArray<int>(2, 3, Allocator.Temp);
+
+// Set elements of the array
+array[0, 1] = 123;
+array[1, 2] = 456;
+
+// Get elements of the array
+int val123 = array[0, 1];
+int val456 = array[1, 2]; 
+
+// Iterate over the array
+foreach (int val in array)
+{
+	Debug.Log(val);
+}
+
+// Copy to a managed array
+int[,] managed = new int[2, 3];
+array.CopyTo(managed);
+```
+
+There is much more functionality available. See [the source](JacksonDunstanNativeCollections/NativeArray2D.cs) for more.
+
+To read about the making of this type, see this [article](https://jacksondunstan.com/articles/5416).
+
 # NativeIntPtr and NativeLongPtr
 
 These are pointers to a single `int` or `long`, useful for counters among other purposes. Here's how to use `NativeIntPtr` (`NativeLongPtr` is identical):
