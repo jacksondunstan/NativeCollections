@@ -139,6 +139,14 @@ namespace JacksonDunstan.NativeCollections
 		/// <param name="valuesLength">
 		/// Length of the values to execute on.
 		/// </param>
+		///
+		/// <param name="innerloopBatchCount">
+		/// Number of job executions per batch
+		/// </param>
+		///
+		/// <param name="dependsOn">
+		/// Handle of the job that must be run before this job
+		/// </param>
 		/// 
 		/// <returns>
 		/// A handle to the created job
@@ -180,7 +188,7 @@ namespace JacksonDunstan.NativeCollections
 		/// <typeparam name="T">
 		/// Type of job to run
 		/// </typeparam>
-		unsafe public static void RunRanged<T>(
+		public static unsafe void RunRanged<T>(
 			this T jobData,
 			int valuesLength)
 			where T : struct, IJobParallelForRanged

@@ -30,13 +30,13 @@ namespace JacksonDunstan.NativeCollections
 		/// </summary>
 		[NativeContainer]
 		[NativeContainerIsAtomicWriteOnly]
-		unsafe public struct Parallel
+		public struct Parallel
 		{
 			/// <summary>
 			/// Pointer to the value in native memory
 			/// </summary>
 			[NativeDisableUnsafePtrRestriction]
-			internal long* m_Buffer;
+			internal readonly long* m_Buffer;
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 			/// <summary>
@@ -139,7 +139,7 @@ namespace JacksonDunstan.NativeCollections
 		/// way to allow for [NativeContainerSupportsDeallocateOnJobCompletion]
 		/// </summary>
 		[NativeDisableUnsafePtrRestriction]
-		internal unsafe long* m_Buffer;
+		internal long* m_Buffer;
 
 		/// <summary>
 		/// Allocator used to create the backing memory
@@ -147,7 +147,7 @@ namespace JacksonDunstan.NativeCollections
 		/// This field must be named this way to comply with
 		/// [NativeContainerSupportsDeallocateOnJobCompletion]
 		/// </summary>
-		internal Allocator m_AllocatorLabel;
+		internal readonly Allocator m_AllocatorLabel;
 
 		// These fields are all required when safety checks are enabled
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -176,7 +176,7 @@ namespace JacksonDunstan.NativeCollections
 		/// <param name="initialValue">
 		/// Initial value of the allocated memory
 		/// </param>
-		public unsafe NativeLongPtr(Allocator allocator, long initialValue = 0)
+		public NativeLongPtr(Allocator allocator, long initialValue = 0)
 		{
 			// Require a valid allocator
 			if (allocator <= Allocator.None)
@@ -288,7 +288,7 @@ namespace JacksonDunstan.NativeCollections
 		/// deallocation complexity.
 		/// </summary>
 		[WriteAccessRequired]
-		public unsafe void Dispose()
+		public void Dispose()
 		{
 			RequireWriteAccess();
 
@@ -358,7 +358,7 @@ namespace JacksonDunstan.NativeCollections
 		/// <summary>
 		/// The object to provide a debugger view for
 		/// </summary>
-		private NativeLongPtr ptr;
+		private NativeLongPtr m_Ptr;
 
 		/// <summary>
 		/// Create the debugger view
@@ -369,7 +369,7 @@ namespace JacksonDunstan.NativeCollections
 		/// </param>
 		public NativeLongPtrDebugView(NativeLongPtr ptr)
 		{
-			this.ptr = ptr;
+			m_Ptr = ptr;
 		}
 
 		/// <summary>
@@ -383,7 +383,7 @@ namespace JacksonDunstan.NativeCollections
 		{
 			get
 			{
-				return ptr.Value;
+				return m_Ptr.Value;
 			}
 		}
 	}

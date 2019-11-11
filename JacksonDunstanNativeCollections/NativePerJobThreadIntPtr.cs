@@ -43,14 +43,14 @@ namespace JacksonDunstan.NativeCollections
 			/// Pointer to the value in native memory
 			/// </summary>
 			[NativeDisableUnsafePtrRestriction]
-			internal int* m_Buffer;
+			internal readonly int* m_Buffer;
 
 			/// <summary>
 			/// Thread index of the job using this object. This is set by Unity
 			/// and must have this exact name and type.
 			/// </summary>
 			[NativeSetThreadIndex]
-			internal int m_ThreadIndex;
+			internal readonly int m_ThreadIndex;
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 			/// <summary>
@@ -388,7 +388,7 @@ namespace JacksonDunstan.NativeCollections
 		/// <summary>
 		/// The object to provide a debugger view for
 		/// </summary>
-		private NativeIntPtr ptr;
+		private NativeIntPtr m_Ptr;
 
 		/// <summary>
 		/// Create the debugger view
@@ -399,7 +399,7 @@ namespace JacksonDunstan.NativeCollections
 		/// </param>
 		public NativePerJobThreadIntPtrDebugView(NativeIntPtr ptr)
 		{
-			this.ptr = ptr;
+			m_Ptr = ptr;
 		}
 
 		/// <summary>
@@ -413,7 +413,7 @@ namespace JacksonDunstan.NativeCollections
 		{
 			get
 			{
-				return ptr.Value;
+				return m_Ptr.Value;
 			}
 		}
 	}

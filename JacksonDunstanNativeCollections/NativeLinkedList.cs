@@ -9,7 +9,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
@@ -87,7 +86,6 @@ namespace JacksonDunstan.NativeCollections
 	[StructLayout(LayoutKind.Sequential)]
 	public unsafe struct NativeLinkedList<T>
 		: IEnumerable<T>
-		, IEnumerable
 		, IDisposable
 #if CSHARP_7_3_OR_NEWER
 		where T : unmanaged
@@ -99,10 +97,8 @@ namespace JacksonDunstan.NativeCollections
 		/// An enumerator for <see cref="NativeLinkedList{T}"/>
 		/// </summary>
 		[StructLayout(LayoutKind.Sequential)]
-		public unsafe struct Enumerator
+		public struct Enumerator
 			: IEnumerator<T>
-			, IEnumerator
-			, IDisposable
 			, IEquatable<Enumerator>
 		{
 			/// <summary>
@@ -4648,7 +4644,7 @@ namespace JacksonDunstan.NativeCollections
 		/// <summary>
 		/// List to view
 		/// </summary>
-		private NativeLinkedList<T> list;
+		private NativeLinkedList<T> m_List;
 	
 		/// <summary>
 		/// Create the view for a given list
@@ -4659,7 +4655,7 @@ namespace JacksonDunstan.NativeCollections
 		/// </param>
 		public NativeLinkedListDebugView(NativeLinkedList<T> list)
 		{
-			this.list = list;
+			m_List = list;
 		}
 	
 		/// <summary>
@@ -4670,7 +4666,7 @@ namespace JacksonDunstan.NativeCollections
 		{
 			get
 			{
-				return list.ToArray();
+				return m_List.ToArray();
 			}
 		}
 	}
