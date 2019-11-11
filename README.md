@@ -127,7 +127,7 @@ This is a 2D version of `NativeArray<T>`. Here's how to use it:
 
 ```csharp
 // Create a 2x3 empty array
-NativeArray<int> array = new NativeArray<int>(2, 3, Allocator.Temp);
+NativeArray2D<int> array = new NativeArray2D<int>(2, 3, Allocator.Temp);
 
 // Set elements of the array
 array[0, 1] = 123;
