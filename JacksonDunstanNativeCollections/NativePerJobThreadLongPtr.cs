@@ -7,7 +7,6 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs.LowLevel.Unsafe;
@@ -15,8 +14,8 @@ using Unity.Jobs.LowLevel.Unsafe;
 namespace JacksonDunstan.NativeCollections
 {
 	/// <summary>
-	/// A polonger to an long stored in native (i.e. unmanaged) memory. One
-	/// longeger is stored for each of the maximum number of job threads. As of
+	/// A pointer to an long stored in native (i.e. unmanaged) memory. One
+	/// long is stored for each of the maximum number of job threads. As of
 	/// Unity 2018.2, this results in 8 KB of memory usage. The advantage over
 	/// <see cref="NativeLongPtr"/> is that all operations on
 	/// <see cref="Parallel"/> are faster due to not being atomic. The resulting
@@ -141,7 +140,6 @@ namespace JacksonDunstan.NativeCollections
 			/// Throw an exception if the object isn't writable
 			/// </summary>
 			[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-			[BurstDiscard]
 			private void RequireWriteAccess()
 			{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -221,7 +219,7 @@ namespace JacksonDunstan.NativeCollections
 			// Create the dispose sentinel
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 #if UNITY_2018_3_OR_NEWER
-        	DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0, allocator);
+			DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0, allocator);
 #else
 			DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0);
 #endif
@@ -327,7 +325,7 @@ namespace JacksonDunstan.NativeCollections
 // Make sure we're not double-disposing
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 #if UNITY_2018_3_OR_NEWER
-        	DisposeSentinel.Dispose(ref m_Safety, ref m_DisposeSentinel);
+			DisposeSentinel.Dispose(ref m_Safety, ref m_DisposeSentinel);
 #else
 			DisposeSentinel.Dispose(m_Safety, ref m_DisposeSentinel);
 #endif
@@ -346,7 +344,6 @@ namespace JacksonDunstan.NativeCollections
 		/// If both read and write access should be allowed
 		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		public void TestUseOnlySetAllowReadAndWriteAccess(
 			bool allowReadOrWriteAccess)
 		{
@@ -361,7 +358,6 @@ namespace JacksonDunstan.NativeCollections
 		/// Throw an exception if the object isn't readable
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireReadAccess()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -373,7 +369,6 @@ namespace JacksonDunstan.NativeCollections
 		/// Throw an exception if the object isn't writable
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireWriteAccess()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -383,7 +378,7 @@ namespace JacksonDunstan.NativeCollections
 	}
 
 	/// <summary>
-	/// Provides a debugger view of <see cref="NativeLongPtr"/>.
+	/// Provides a debugger view of <see cref="NativePerJobThreadLongPtr"/>.
 	/// </summary>
 	internal sealed class NativePerJobThreadLongPtrDebugView
 	{

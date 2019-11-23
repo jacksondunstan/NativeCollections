@@ -7,7 +7,6 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs.LowLevel.Unsafe;
@@ -141,7 +140,6 @@ namespace JacksonDunstan.NativeCollections
 			/// Throw an exception if the object isn't writable
 			/// </summary>
 			[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-			[BurstDiscard]
 			private void RequireWriteAccess()
 			{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -219,7 +217,7 @@ namespace JacksonDunstan.NativeCollections
 			// Create the dispose sentinel
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 #if UNITY_2018_3_OR_NEWER
-        	DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0, allocator);
+			DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0, allocator);
 #else
 			DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0);
 #endif
@@ -325,7 +323,7 @@ namespace JacksonDunstan.NativeCollections
 // Make sure we're not double-disposing
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 #if UNITY_2018_3_OR_NEWER
-        	DisposeSentinel.Dispose(ref m_Safety, ref m_DisposeSentinel);
+			DisposeSentinel.Dispose(ref m_Safety, ref m_DisposeSentinel);
 #else
 			DisposeSentinel.Dispose(m_Safety, ref m_DisposeSentinel);
 #endif
@@ -344,7 +342,6 @@ namespace JacksonDunstan.NativeCollections
 		/// If both read and write access should be allowed
 		/// </param>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		public void TestUseOnlySetAllowReadAndWriteAccess(
 			bool allowReadOrWriteAccess)
 		{
@@ -359,7 +356,6 @@ namespace JacksonDunstan.NativeCollections
 		/// Throw an exception if the object isn't readable
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireReadAccess()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -371,7 +367,6 @@ namespace JacksonDunstan.NativeCollections
 		/// Throw an exception if the object isn't writable
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireWriteAccess()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -381,7 +376,7 @@ namespace JacksonDunstan.NativeCollections
 	}
 
 	/// <summary>
-	/// Provides a debugger view of <see cref="NativeIntPtr"/>.
+	/// Provides a debugger view of <see cref="NativePerJobThreadIntPtr"/>.
 	/// </summary>
 	internal sealed class NativePerJobThreadIntPtrDebugView
 	{
