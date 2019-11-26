@@ -224,7 +224,7 @@ namespace JacksonDunstan.NativeCollections
 		public NativePerJobThreadIntPtrs(int length, Allocator allocator)
 		{
 			// Require a valid allocator
-			if (UnsafeUtility.IsValidAllocator(allocator))
+			if (!UnsafeUtility.IsValidAllocator(allocator))
 			{
 				throw new ArgumentException(
 					"Allocator must be Temp, TempJob or Persistent",
