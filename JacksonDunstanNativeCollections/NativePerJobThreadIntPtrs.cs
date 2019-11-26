@@ -43,7 +43,7 @@ namespace JacksonDunstan.NativeCollections
 			/// <summary>
 			/// The number of integers stored in the array.
 			/// </summary>
-			public int Length;
+			public readonly int Length;
 
 			/// <summary>
 			/// Pointers to the integer values in native memory
