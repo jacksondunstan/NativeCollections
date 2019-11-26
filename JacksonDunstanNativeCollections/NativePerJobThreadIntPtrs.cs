@@ -15,9 +15,14 @@ using Unity.Jobs.LowLevel.Unsafe;
 namespace JacksonDunstan.NativeCollections
 {
 	/// <summary>
-	/// Same as <see cref="NativeIntPtr"/>, but uses an array of integers
-	/// instead of single value. Takes advantage of the fact that we are
-	/// already using a full cache line to sum the single int.
+	/// A pointer to an int array stored in native (i.e. unmanaged) memory. One
+	/// integer array is stored for each of the maximum number of job threads.
+	/// As of Unity 2018.2, this results in 8 KB of memory usage for every 16
+	/// integers. The advantage over <see cref="NativeIntPtr"/> is that all
+	/// operations on <see cref="Parallel"/> are faster due to not being
+	/// atomic. The resulting array ints are collected with a loop. This is
+	/// therefore a good option when most usage is via <see cref="Parallel"/>
+	/// and memory usage is not a concern.
 	/// </summary>
 	[NativeContainer]
 	[NativeContainerSupportsDeallocateOnJobCompletion]
@@ -32,15 +37,16 @@ namespace JacksonDunstan.NativeCollections
 		/// </summary>
 		[NativeContainer]
 		[NativeContainerIsAtomicWriteOnly]
-		public struct Parallel {
+		public struct Parallel
+		{
 
 			/// <summary>
-			/// The number of int ptrs.
+			/// The number of integers stored in the array.
 			/// </summary>
 			public int Length;
 
 			/// <summary>
-			/// Pointer to the value in native memory
+			/// Pointers to the integer values in native memory
 			/// </summary>
 			[NativeDisableUnsafePtrRestriction]
 			internal int* m_Buffer;
@@ -63,6 +69,10 @@ namespace JacksonDunstan.NativeCollections
 			/// Create a parallel version of the object
 			/// </summary>
 			/// 
+			/// <param name="length">
+			/// The number of integers stored in the array
+			/// </param>
+			/// 
 			/// <param name="value">
 			/// Pointer to the value
 			/// </param>
@@ -82,11 +92,16 @@ namespace JacksonDunstan.NativeCollections
 			/// Create a parallel version of the object
 			/// </summary>
 			/// 
+			/// <param name="length">
+			/// The number of integers stored in the array
+			/// </param>
+			/// 
 			/// <param name="value">
 			/// Pointer to the value
 			/// </param>
-			internal Parallel(int* value)
+			internal Parallel(int length, int* value)
 			{
+				Length = length;
 				m_Buffer = value;
 				m_ThreadIndex = 0;
 			}
@@ -95,28 +110,26 @@ namespace JacksonDunstan.NativeCollections
 			/// <summary>
 			/// Increment the stored value
 			/// </summary>
-			/// 
-			/// <returns>
-			/// This object
-			/// </returns>
 			[WriteAccessRequired]
 			public void Increment(int index)
 			{
 				RequireWriteAccess();
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				if (index < 0 || index >= Length) throw new ArgumentException("Index must be between 0 and Length - 1.", nameof(index));
+#endif
 				m_Buffer[IntsPerCacheLine * m_ThreadIndex + index]++;
 			}
 
 			/// <summary>
 			/// Decrement the stored value
 			/// </summary>
-			/// 
-			/// <returns>
-			/// This object
-			/// </returns>
 			[WriteAccessRequired]
 			public void Decrement(int index)
 			{
 				RequireWriteAccess();
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				if (index < 0 || index >= Length) throw new ArgumentException("Index must be between 0 and Length - 1.", nameof(index));
+#endif
 				m_Buffer[IntsPerCacheLine * m_ThreadIndex + index]--;
 			}
 
@@ -127,14 +140,13 @@ namespace JacksonDunstan.NativeCollections
 			/// <param name="value">
 			/// Value to add. Use negative values for subtraction.
 			/// </param>
-			/// 
-			/// <returns>
-			/// This object
-			/// </returns>
 			[WriteAccessRequired]
 			public void Add(int index, int value)
 			{
 				RequireWriteAccess();
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				if (index < 0 || index >= Length) throw new ArgumentException("Index must be between 0 and Length - 1.", nameof(index));
+#endif
 				m_Buffer[IntsPerCacheLine * m_ThreadIndex + index] += value;
 			}
 
@@ -142,7 +154,6 @@ namespace JacksonDunstan.NativeCollections
 			/// Throw an exception if the object isn't writable
 			/// </summary>
 			[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-			[BurstDiscard]
 			private void RequireWriteAccess()
 			{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -152,13 +163,14 @@ namespace JacksonDunstan.NativeCollections
 		}
 
 		/// <summary>
-		/// The number of int ptrs.
+		/// The number of integers stored in the array.
 		/// </summary>
-		public int Length;
+		public readonly int Length;
 
 		/// <summary>
-		/// Pointer to the value in native memory. Must be named exactly this
-		/// way to allow for [NativeContainerSupportsDeallocateOnJobCompletion]
+		/// Pointers to the integer values in native memory. Must be named
+		/// exactly this way to allow for
+		/// [NativeContainerSupportsDeallocateOnJobCompletion]
 		/// </summary>
 		[NativeDisableUnsafePtrRestriction]
 		internal int* m_Buffer;
@@ -201,17 +213,18 @@ namespace JacksonDunstan.NativeCollections
 		/// Allocate memory and set the initial value
 		/// </summary>
 		/// 
-		/// <param name="allocator">
-		/// Allocator to allocate and deallocate with. Must be valid.
+		/// <param name="length">
+		/// The number of logical integers to allocate. Initial value is 0 for
+		/// all array elements.
 		/// </param>
 		/// 
-		/// <param name="initialValue">
-		/// Initial value of the allocated memory
+		/// <param name="allocator">
+		/// Allocator to allocate and deallocate with. Must be valid.
 		/// </param>
 		public NativePerJobThreadIntPtrs(int length, Allocator allocator)
 		{
 			// Require a valid allocator
-			if (allocator <= Allocator.None)
+			if (UnsafeUtility.IsValidAllocator(allocator))
 			{
 				throw new ArgumentException(
 					"Allocator must be Temp, TempJob or Persistent",
@@ -236,7 +249,7 @@ namespace JacksonDunstan.NativeCollections
 			// Create the dispose sentinel
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 #if UNITY_2018_3_OR_NEWER
-        	DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0, allocator);
+			DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0, allocator);
 #else
 			DisposeSentinel.Create(out m_Safety, out m_DisposeSentinel, 0);
 #endif
@@ -258,6 +271,9 @@ namespace JacksonDunstan.NativeCollections
 			get
 			{
 				RequireReadAccess();
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				if (index < 0 || index >= Length) throw new ArgumentException("Index must be between 0 and Length - 1.", nameof(index));
+#endif
 				int value = 0;
 				for (int i = 0; i < JobsUtility.MaxJobThreadCount; ++i)
 				{
@@ -270,6 +286,9 @@ namespace JacksonDunstan.NativeCollections
 			set
 			{
 				RequireWriteAccess();
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+				if (index < 0 || index >= Length) throw new ArgumentException("Index must be between 0 and Length - 1.", nameof(index));
+#endif
 				*(m_Buffer + index) = value;
 				for (int i = 1; i < JobsUtility.MaxJobThreadCount; ++i)
 				{
@@ -291,7 +310,7 @@ namespace JacksonDunstan.NativeCollections
 			Parallel parallel = new Parallel(Length, m_Buffer, m_Safety);
 			AtomicSafetyHandle.UseSecondaryVersion(ref parallel.m_Safety);
 #else
-			Parallel parallel = new Parallel(m_Buffer);
+			Parallel parallel = new Parallel(Length, m_Buffer);
 #endif
 			return parallel;
 		}
@@ -339,7 +358,7 @@ namespace JacksonDunstan.NativeCollections
 // Make sure we're not double-disposing
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
 #if UNITY_2018_3_OR_NEWER
-        	DisposeSentinel.Dispose(ref m_Safety, ref m_DisposeSentinel);
+			DisposeSentinel.Dispose(ref m_Safety, ref m_DisposeSentinel);
 #else
 			DisposeSentinel.Dispose(m_Safety, ref m_DisposeSentinel);
 #endif
@@ -373,7 +392,6 @@ namespace JacksonDunstan.NativeCollections
 		/// Throw an exception if the object isn't readable
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireReadAccess()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -385,7 +403,6 @@ namespace JacksonDunstan.NativeCollections
 		/// Throw an exception if the object isn't writable
 		/// </summary>
 		[Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-		[BurstDiscard]
 		private void RequireWriteAccess()
 		{
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -395,40 +412,38 @@ namespace JacksonDunstan.NativeCollections
 	}
 
 	/// <summary>
-	/// Provides a debugger view of <see cref="NativeIntPtr"/>.
+	/// Provides a debugger view of <see cref="NativePerJobThreadIntPtrs"/>.
 	/// </summary>
 	internal sealed class NativePerJobThreadIntPtrsDebugView
 	{
 		/// <summary>
 		/// The object to provide a debugger view for
 		/// </summary>
-		private NativePerJobThreadIntPtrs ptrs;
+		private NativePerJobThreadIntPtrs m_Ptrs;
 
 		/// <summary>
 		/// Create the debugger view
 		/// </summary>
 		/// 
-		/// <param name="ptr">
+		/// <param name="ptrs">
 		/// The object to provide a debugger view for
 		/// </param>
 		public NativePerJobThreadIntPtrsDebugView(NativePerJobThreadIntPtrs ptrs)
 		{
-			this.ptrs = ptrs;
+			m_Ptrs = ptrs;
 		}
 
 		/// <summary>
-		/// Get the viewed object's value
-		/// </summary>
-		/// 
-		/// <value>
-		/// The viewed object's value
-		/// </value>
-		public int this[int index]
-		{
-			get
-			{
-				return ptrs[index];
-			}
-		}
+        /// Get the elements of the array as a managed array
+        /// </summary>
+        public int[] Items
+        {
+            get
+            {
+            	int[] arr = new int[m_Ptrs.Length];
+            	for (int i = 0; i < arr.Length; i++) arr[i] = m_Ptrs[i];
+                return arr;
+            }
+        }
 	}
 }
