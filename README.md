@@ -6,7 +6,7 @@ A small library of native collections like `NativeArray<T>` suitable to be used 
 
 Clone or download this repository and copy the `JacksonDunstanNativeCollections` directory somewhere inside your Unity project's `Assets` directory.
 
-# NativeLinkedList<T>
+# NativeLinkedList&lt;T&gt;
 
 This is a doubly-linked list backed by parallel arrays. Here's how to use it:
 
@@ -50,7 +50,7 @@ There is much more functionality available. See [the source](JacksonDunstanNativ
 
 To read about the making of this type, see this [article series](https://jacksondunstan.com/articles/4865).
 
-# NativeChunkedList<T>
+# NativeChunkedList&lt;T&gt;
 
 This is a dynamically-resizable list backed by arrays that store "chunks" of elements and an array of pointers to those chunks. Here's how to use it:
 
@@ -97,7 +97,7 @@ There is much more functionality available. See [the source](JacksonDunstanNativ
 
 To read about the making of this type, see this [article series](https://jacksondunstan.com/articles/4963).
 
-# NativeHashSet<T>
+# NativeHashSet&lt;T&gt;
 
 This is a collection of unique keys that aren't mapped to values. Here's how to use it:
 
@@ -121,7 +121,7 @@ There is much more functionality available. See [the source](JacksonDunstanNativ
 
 To read about the making of this type, see this [article](https://jacksondunstan.com/articles/5346).
 
-# NativeArray2D<T>
+# NativeArray2D&lt;T&gt;
 
 This is a 2D version of `NativeArray<T>`. Here's how to use it:
 
