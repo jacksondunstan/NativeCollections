@@ -242,6 +242,43 @@ struct ChunkedListIterateJobParallelFor : IJobParallelForRanged
 
 To read about the making of this type, see this [article](https://jacksondunstan.com/articles/4976).
 
+# SharedDisposable&lt;T&gt;
+
+This allows for easy sharing of `IDisposable` objects such as the above collection types. A reference count is held internally and the object is free when its last reference is released. Here's how to use it:
+
+```csharp
+// Create an IDisposable
+NativeArray<int> array = new NativeArray<int>(1, Allocator.Temp);
+
+// Prepare for sharing. Ref count = 1.
+SharedDisposable<NativeArray<int>> shared = array.Share(Allocator.Temp);
+
+// Share. Ref count = 2.
+SharedDisposable<NativeArray<int>> shared2 = shared.Ref();
+
+// Use a shared reference
+print("Array len: " + shared2.Value.Length);
+
+// Release a reference. Ref count = 1.
+shared2.Dispose();
+
+// Release the last reference. Ref count = 0.
+// The NativeArray<int> is disposed.
+shared.Dispose();
+
+// 'using' blocks are even more convenient
+// No need to call Dispose()
+// Exception-safe
+using (SharedDisposable<NativeArray<int>> used = array.Share(Allocator.Temp))
+{
+    using (SharedDisposable<NativeArray<int>> used2 = shared.Ref())
+    {
+    }
+}
+```
+
+To read about the making of this type, see this [article](https://jacksondunstan.com/articles/5441).
+
 # License
 
 [MIT](LICENSE.txt)
