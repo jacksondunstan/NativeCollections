@@ -5,6 +5,7 @@
 //-----------------------------------------------------------------------
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -89,7 +90,7 @@ namespace JacksonDunstan.NativeCollections
     [DebuggerDisplay("Length = {Length}. Capacity = {Capacity}")]
     [DebuggerTypeProxy(typeof(NativeHashSetDebugView<>))]
     [StructLayout(LayoutKind.Sequential)]
-    public unsafe struct NativeHashSet<T> : IDisposable
+    public unsafe struct NativeHashSet<T> : IDisposable, IEnumerable<T>
 #if CSHARP_7_3_OR_NEWER
         where T : unmanaged
 #else
@@ -574,19 +575,11 @@ namespace JacksonDunstan.NativeCollections
             {
                 array = new NativeArray<T>(length + index, m_Allocator);
             }
+
+            var enumerator = GetEnumerator();
             
-            int* bucketArray = (int*)m_State->Buckets;
-            int* bucketNext = (int*)m_State->Next;
-            for (int i = 0; i <= m_State->BucketCapacityMask; ++i)
-            {
-                for (int b = bucketArray[i]; b != -1; b = bucketNext[b])
-                {
-                    array[index] = UnsafeUtility.ReadArrayElement<T>(
-                        m_State->Items,
-                        b);
-                    index++;
-                }
-            }
+            while (enumerator.MoveNext())
+                array[index++] = enumerator.Current;
 
             return array;
         }
@@ -1098,6 +1091,73 @@ namespace JacksonDunstan.NativeCollections
                 allowReadOrWriteAccess);
 #endif
         }
+
+        public Enumerator GetEnumerator() => new Enumerator(this);
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
+
+
+        public struct Enumerator : IEnumerator<T>
+        {
+            int index;
+            int bucket;
+
+            int* bucketNext;
+            int* bucketArray;
+
+            NativeHashSetState* state;
+
+            public Enumerator(NativeHashSet<T> set)
+            {
+                set.RequireReadAccess();
+
+                index = -1;
+                bucket = -1;
+                state = set.m_State;
+
+                bucketArray = (int*)state->Buckets;
+                bucketNext = (int*)state->Next;
+
+            }
+
+            public T Current
+            {
+                get
+                {
+
+                    return UnsafeUtility.ReadArrayElement<T>(
+                                state->Items,
+                                bucket);
+                }
+            }
+
+            object IEnumerator.Current => Current;
+
+            public void Dispose() { }
+
+            public bool MoveNext()
+            {
+                if (bucket != -1)
+                    bucket = bucketNext[bucket];
+
+                if (bucket == -1)
+                {
+                    while (bucket == -1 && index <= state->BucketCapacityMask)
+                    {
+                        index++;
+                        bucket = bucketArray[index];
+                    }
+                }
+
+                return index <= state->BucketCapacityMask;
+            }
+
+            public void Reset() { }
+
+        }
+
     }
     
     /// <summary>
@@ -1141,19 +1201,29 @@ namespace JacksonDunstan.NativeCollections
         {
             get
             {
-                using (NativeArray<T> array = m_Set.ToNativeArray())
+                var enumerator = m_Set.GetEnumerator();
+
+                List<T> result = new List<T>(m_Set.Length);
+                while (enumerator.MoveNext())
                 {
-                    
-                    List<T> result = new List<T>(array.Length);
-                    foreach (T item in array)
-                    {
-                        if (m_Set.Contains(item))
-                        {
-                            result.Add(item);
-                        }
-                    }
-                    return result;
+                    result.Add(enumerator.Current);
                 }
+
+                return result;
+                
+                //using (NativeArray<T> array = m_Set.ToNativeArray())
+                //{
+                    
+                //    List<T> result = new List<T>(array.Length);
+                //    foreach (T item in array)
+                //    {
+                //        if (m_Set.Contains(item))
+                //        {
+                //            result.Add(item);
+                //        }
+                //    }
+                //    return result;
+                //}
             }
         }
     }
