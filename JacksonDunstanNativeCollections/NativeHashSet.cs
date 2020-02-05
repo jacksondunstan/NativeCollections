@@ -1122,16 +1122,9 @@ namespace JacksonDunstan.NativeCollections
 
             }
 
-            public T Current
-            {
-                get
-                {
-
-                    return UnsafeUtility.ReadArrayElement<T>(
+            public T Current => UnsafeUtility.ReadArrayElement<T>(
                                 state->Items,
                                 bucket);
-                }
-            }
 
             object IEnumerator.Current => Current;
 
