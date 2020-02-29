@@ -6,6 +6,14 @@ A small library of native collections like `NativeArray<T>` suitable to be used 
 
 Clone or download this repository and copy the `JacksonDunstanNativeCollections` directory somewhere inside your Unity project's `Assets` directory.
 
+Add this as a package to your project by adding the below as an entry to the dependencies in the `/Package/manifest.json` file:
+
+```json
+"com.jacksondunstan.native-collections": "https://github.com/jacksondunstan/NativeCollections.git"
+```
+
+For more information on adding git repositories as a package see the [Git support on Package Manager](https://docs.unity3d.com/Manual/upm-git.html) in the Unity Documentation.
+
 # NativeLinkedList&lt;T&gt;
 
 This is a doubly-linked list backed by parallel arrays. Here's how to use it:
@@ -281,4 +289,4 @@ To read about the making of this type, see this [article](https://jacksondunstan
 
 # License
 
-[MIT](LICENSE.txt)
+[MIT](LICENSE.md)
