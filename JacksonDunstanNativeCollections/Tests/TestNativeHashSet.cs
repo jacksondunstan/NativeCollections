@@ -574,5 +574,43 @@ namespace JacksonDunstan.NativeCollections.Tests
                     () => writer.TryAdd(1));
             }
         }
+
+        struct ParallelWriterJob : IJobParallelFor
+        {
+            [ReadOnly] public NativeArray<int> Array;
+            [WriteOnly] public NativeHashSet<int>.ParallelWriter Writer;
+            
+            public void Execute(int index)
+            {
+                Writer.TryAdd(Array[index]);
+            }
+        }
+        
+        [Test]
+        public void AsParallelWriterReturnsUsableWriterInJob()
+        {
+            using (NativeHashSet<int> set = CreateEmptySet())
+            {
+                using (NativeArray<int> array = new NativeArray<int>(
+                    2,
+                    Allocator.TempJob))
+                {
+                    NativeArray<int> arrayRef = array;
+                    arrayRef[0] = 1;
+                    arrayRef[1] = 2;
+                    
+                    ParallelWriterJob job = new ParallelWriterJob
+                    {
+                        Array = array,
+                        Writer = set.AsParallelWriter()
+                    };
+                    
+                    JobHandle handle = job.Schedule(array.Length, 64);
+                    handle.Complete();
+                    
+                    Assert.That(set.Length, Is.EqualTo(2));
+                }
+            }
+        }
     }
 }

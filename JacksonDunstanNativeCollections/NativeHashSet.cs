@@ -344,7 +344,7 @@ namespace JacksonDunstan.NativeCollections
 
             return true;
         }
-        
+
         /// <summary>
         /// Remove all items from the set.
         ///
@@ -603,7 +603,14 @@ namespace JacksonDunstan.NativeCollections
         /// </returns>
         public ParallelWriter AsParallelWriter()
         {
-            return new ParallelWriter(this);
+            ParallelWriter writer;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            writer.m_Safety = m_Safety;
+#endif
+            writer.m_ThreadIndex = 0;
+
+            writer.m_State = m_State;
+            return writer;
         }
 
         /// <summary>
@@ -777,85 +784,111 @@ namespace JacksonDunstan.NativeCollections
         [NativeContainerIsAtomicWriteOnly]
         public struct ParallelWriter
         {
-            private readonly NativeHashSet<T> m_Set;
+            /// <summary>
+            /// State of the set or null if the list is created with the default
+            /// constructor or <see cref="Dispose()"/> has been called. This is
+            /// shared among all instances of the set.
+            /// </summary>
+            [NativeDisableUnsafePtrRestriction]
+            internal NativeHashSetState* m_State;
 
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            /// <summary>
+            /// A handle to information about what operations can be safely
+            /// performed on the set at any given time.
+            /// </summary>
+            internal AtomicSafetyHandle m_Safety;
+#endif
+            
+            /// <summary>
+            /// Thread index of the job using this object. This is set by Unity
+            /// and must have this exact name and type.
+            /// </summary>
             [NativeSetThreadIndex]
-            private readonly int m_ThreadIndex;
+            internal int m_ThreadIndex;
 
-            internal ParallelWriter(NativeHashSet<T> set)
-            {
-                m_Set = set;
-                m_ThreadIndex = 0;
-            }
-
+            /// <summary>
+            /// Get or set the set's capacity to hold items. The capacity can't
+            /// be set to be lower than it currently is.
+            /// 
+            /// The 'get' operation requires read access and the 'set' operation
+            /// requires write access.
+            /// </summary>
             public int Capacity
             {
                 get
                 {
-                    m_Set.RequireReadAccess();
-                    
-                    return m_Set.m_State->ItemCapacity;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                    AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
+#endif
+                    return m_State->ItemCapacity;
                 }
             }
 
             /// <summary>
-            /// Try to add an item to the set
+            /// Try to add an item to the set.
+            ///
+            /// This operation requires write access.
             /// </summary>
             /// 
             /// <param name="item">
-            /// The item to add to the set
+            /// Item to add
             /// </param>
             /// 
             /// <returns>
-            /// If the item was added to the set. This is false if the item was
-            /// already added.
+            /// If the item was added to the set. This is false only if the item
+            /// was already in the set.
             /// </returns>
             public bool TryAdd(T item)
             {
-                m_Set.RequireWriteAccess();
-                
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
+#endif
                 NativeMultiHashSetIterator tempIt;
-                if (TryGetFirstValueAtomic(m_Set.m_State, item, out tempIt))
+                if (TryGetFirstValueAtomic(m_State, item, out tempIt))
                 {
                     return false;
                 }
-
                 // Allocate an entry from the free list
-                int idx = AllocFreeListEntry(m_Set.m_State, m_ThreadIndex);
+                int idx = AllocFreeListEntry(m_State, m_ThreadIndex);
 
                 // Write the new value to the entry
-                UnsafeUtility.WriteArrayElement(m_Set.m_State->Items, idx, item);
+                UnsafeUtility.WriteArrayElement(m_State->Items, idx, item);
 
-                int bucket = item.GetHashCode() & m_Set.m_State->BucketCapacityMask;
-                // Add the index to the hash-set
-                int* buckets = (int*)m_Set.m_State->Buckets;
-                if (Interlocked.CompareExchange(ref buckets[bucket], idx, -1) != -1)
+                int bucket = item.GetHashCode() & m_State->BucketCapacityMask;
+                // Add the index to the hash-map
+                int* buckets = (int*)m_State->Buckets;
+                if (Interlocked.CompareExchange(
+                    ref buckets[bucket],
+                    idx,
+                    -1) != -1)
                 {
-                    int* nextPtrs = (int*)m_Set.m_State->Next;
+                    int* nextPtrs = (int*)m_State->Next;
                     do
                     {
                         nextPtrs[idx] = buckets[bucket];
-                        if (TryGetFirstValueAtomic(m_Set.m_State, item, out tempIt))
+                        if (TryGetFirstValueAtomic(m_State, item, out tempIt))
                         {
-                            // Put back the entry in the free list if someone else
-                            // added it while trying to add
+                            // Put back the entry in the free list if someone
+                            // else added it while trying to add
                             do
                             {
-                                nextPtrs[idx] = m_Set.m_State->FirstFreeTLS[
-                                    m_ThreadIndex * NativeHashSetState.IntsPerCacheLine];
+                                nextPtrs[idx] = m_State->FirstFreeTLS[
+                                    m_ThreadIndex
+                                    * NativeHashSetState.IntsPerCacheLine];
                             } while (Interlocked.CompareExchange(
-                                ref m_Set.m_State->FirstFreeTLS[
-                                m_ThreadIndex * NativeHashSetState.IntsPerCacheLine],
+                                ref m_State->FirstFreeTLS[
+                                    m_ThreadIndex
+                                    * NativeHashSetState.IntsPerCacheLine],
                                 idx,
                                 nextPtrs[idx]) != nextPtrs[idx]);
 
                             return false;
                         }
-                    } while (
-                        Interlocked.CompareExchange(
-                            ref buckets[bucket],
-                            idx,
-                            nextPtrs[idx]) != nextPtrs[idx]);
+                    } while (Interlocked.CompareExchange(
+                        ref buckets[bucket],
+                        idx,
+                        nextPtrs[idx]) != nextPtrs[idx]);
                 }
                 return true;
             }
@@ -874,7 +907,7 @@ namespace JacksonDunstan.NativeCollections
             {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 AtomicSafetyHandle.SetAllowReadOrWriteAccess(
-                    m_Set.m_Safety,
+                    m_Safety,
                     allowReadOrWriteAccess);
 #endif
             }
