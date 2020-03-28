@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------------
 // <copyright file="NativeHashSet.cs" company="Jackson Dunstan">
-//     Copyright (c) Jackson Dunstan. See LICENSE.txt.
+//     Copyright (c) Jackson Dunstan. See LICENSE.md.
 // </copyright>
 //-----------------------------------------------------------------------
 
