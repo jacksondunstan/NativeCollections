@@ -691,11 +691,14 @@ namespace JacksonDunstan.NativeCollections
                 m_Length1 = length1,
                 m_Allocator = allocator
             };
+	
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
             DisposeSentinel.Create(
                 out array.m_Safety,
                 out array.m_DisposeSentinel,
                 1,
                 allocator);
+#endif
         }
 
         /// <summary>
