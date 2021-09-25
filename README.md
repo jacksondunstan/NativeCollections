@@ -2,6 +2,8 @@
 
 A small library of native collections like `NativeArray<T>` suitable to be used with Unity 2018.1 or greater. No additional packages (e.g. ECS or Burst) are required.
 
+[![openupm](https://img.shields.io/npm/v/com.jacksondunstan.native-collections?label=openupm&registry_uri=https://package.openupm.com)](https://openupm.com/packages/com.jacksondunstan.native-collections/)
+
 # Getting Started
 
 Clone or download this repository and copy the `JacksonDunstanNativeCollections` directory somewhere inside your Unity project's `Assets` directory.
