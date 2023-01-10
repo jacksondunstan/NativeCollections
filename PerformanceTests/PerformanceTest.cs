@@ -58,7 +58,7 @@ public class PerformanceTest : MonoBehaviour
 	[BurstCompile]
 	struct HashSetAddJob : IJob
 	{
-		public NativeHashSet<int> Set;
+		public JacksonDunstan.NativeCollections.NativeHashSet<int> Set;
 		public int NumElementsToAdd;
 
 		public void Execute()
@@ -256,7 +256,7 @@ public class PerformanceTest : MonoBehaviour
 	[BurstCompile]
 	struct HashSetRemoveJob : IJob
 	{
-		public NativeHashSet<int> Set;
+		public JacksonDunstan.NativeCollections.NativeHashSet<int> Set;
 		public int NumElementsToRemove;
 
 		public void Execute()
@@ -314,7 +314,7 @@ public class PerformanceTest : MonoBehaviour
 			4,
 			4,
 			Allocator.TempJob);
-		NativeHashSet<int> hashSet = new NativeHashSet<int>(
+		var hashSet = new JacksonDunstan.NativeCollections.NativeHashSet<int>(
 			4,
 			Allocator.TempJob);
 		NativeIntPtr nativeIntPtr = new NativeIntPtr(Allocator.TempJob);
@@ -475,7 +475,7 @@ public class PerformanceTest : MonoBehaviour
 			numElementsPerChunk,
 			0,
 			Allocator.TempJob);
-		NativeHashSet<int> hashSet = new NativeHashSet<int>(
+		var hashSet = new JacksonDunstan.NativeCollections.NativeHashSet<int>(
 			0,
 			Allocator.TempJob);
 		NativeIntPtr nativeIntPtr = new NativeIntPtr(Allocator.TempJob);

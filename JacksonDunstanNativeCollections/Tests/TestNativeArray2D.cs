@@ -486,7 +486,10 @@ namespace JacksonDunstan.NativeCollections.Tests
         {
             using (NativeArray2D<int> a1 = CreateArray(2, 3))
             {
+// Ignore warning of comparison with self
+#pragma warning disable CS1718
                 Assert.That(a1 == a1, Is.True);
+#pragma warning restore CS1718
                 
                 using (NativeArray2D<int> a2 = CreateArray(2, 3))
                 {
@@ -500,7 +503,10 @@ namespace JacksonDunstan.NativeCollections.Tests
         {
             using (NativeArray2D<int> a1 = CreateArray(2, 3))
             {
+// Ignore warning of comparison with self
+#pragma warning disable CS1718
                 Assert.That(a1 != a1, Is.False);
+#pragma warning restore CS1718
                 
                 using (NativeArray2D<int> a2 = CreateArray(2, 3))
                 {

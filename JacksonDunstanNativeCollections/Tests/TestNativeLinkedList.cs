@@ -1885,6 +1885,83 @@ namespace JacksonDunstan.NativeCollections.Tests
 		}
 
 		[Test]
+		public void SortNodeMemoryAddressesPreservesOrderButSortsMemoryRemoveAndInsertIntermediateNode()
+		{
+			using (var list = new NativeLinkedList<int>(7, Allocator.Temp))
+			{
+				var e00 = list.InsertAfter(list.Tail, 0);
+				var e10 = list.InsertAfter(list.Tail, 10);
+				var e20 = list.InsertAfter(list.Tail, 20);
+				var e30 = list.InsertAfter(list.Tail, 30);
+				var e40 = list.InsertAfter(list.Tail, 40);
+				var e50 = list.InsertAfter(list.Tail, 50);
+				var e60 = list.InsertAfter(list.Tail, 60);
+				// values = [ h-0, 10, 20, 30, 40, 50, 60-t ]
+
+				list.Remove(e30);
+				// values = [ h-0, 10, 20, 60-t, 40, 50, _ ]
+
+				list.SortNodeMemoryAddresses();
+				// values = [ h-0, 10, 20, 40, 50, 60-t, _ ]
+
+				// Same as removing e20 but the enumerator is invalid at this point.
+				list.Remove(list.GetEnumeratorAtIndex(2));
+				// values = [ h-0, 10, 60-t, 40, 50, _, _ ]
+
+				list.SortNodeMemoryAddresses();
+				// values = [ h-0, 10, 40, 50, 60-t, _, _ ]
+
+				Assert.That(list[0], Is.EqualTo(0));
+				Assert.That(list[1], Is.EqualTo(10));
+				Assert.That(list[2], Is.EqualTo(40));
+				Assert.That(list[3], Is.EqualTo(50));
+				Assert.That(list[4], Is.EqualTo(60));
+				Assert.That(list.GetEnumeratorAtIndex(0).Current, Is.EqualTo(0));
+				Assert.That(list.GetEnumeratorAtIndex(1).Current, Is.EqualTo(10));
+				Assert.That(list.GetEnumeratorAtIndex(2).Current, Is.EqualTo(40));
+				Assert.That(list.GetEnumeratorAtIndex(3).Current, Is.EqualTo(50));
+				Assert.That(list.GetEnumeratorAtIndex(4).Current, Is.EqualTo(60));
+				AssertListValues(list, 0, 10, 40, 50, 60);
+
+				var e15 = list.InsertAfter(list.GetEnumeratorAtIndex(1), 15);
+				// values = [ h-0, 10, 40, 50, 60-t, 15, _ ]
+
+				Assert.That(list[0], Is.EqualTo(0));
+				Assert.That(list[1], Is.EqualTo(10));
+				Assert.That(list[2], Is.EqualTo(40));
+				Assert.That(list[3], Is.EqualTo(50));
+				Assert.That(list[4], Is.EqualTo(60));
+				Assert.That(list[5], Is.EqualTo(15));
+				Assert.That(list.GetEnumeratorAtIndex(0).Current, Is.EqualTo(0));
+				Assert.That(list.GetEnumeratorAtIndex(1).Current, Is.EqualTo(10));
+				Assert.That(list.GetEnumeratorAtIndex(2).Current, Is.EqualTo(40));
+				Assert.That(list.GetEnumeratorAtIndex(3).Current, Is.EqualTo(50));
+				Assert.That(list.GetEnumeratorAtIndex(4).Current, Is.EqualTo(60));
+				Assert.That(list.GetEnumeratorAtIndex(5).Current, Is.EqualTo(15));
+				AssertListValues(list, 0, 10, 15, 40, 50, 60);
+
+				list.SortNodeMemoryAddresses();
+				// values = [ h-0, 10, 15, 40, 50, 60-t, _ ]
+
+				Assert.That(list[0], Is.EqualTo(0));
+				Assert.That(list[1], Is.EqualTo(10));
+				Assert.That(list[2], Is.EqualTo(15));
+				Assert.That(list[3], Is.EqualTo(40));
+				Assert.That(list[4], Is.EqualTo(50));
+				Assert.That(list[5], Is.EqualTo(60));
+				Assert.That(list.GetEnumeratorAtIndex(0).Current, Is.EqualTo(0));
+				Assert.That(list.GetEnumeratorAtIndex(1).Current, Is.EqualTo(10));
+				Assert.That(list.GetEnumeratorAtIndex(2).Current, Is.EqualTo(15));
+				Assert.That(list.GetEnumeratorAtIndex(3).Current, Is.EqualTo(40));
+				Assert.That(list.GetEnumeratorAtIndex(4).Current, Is.EqualTo(50));
+				Assert.That(list.GetEnumeratorAtIndex(5).Current, Is.EqualTo(60));
+				AssertListValues(list, 0, 10, 15, 40, 50, 60);
+
+				AssertGeneralInvariants(list);
+			}
+		}
+
+		[Test]
 		public void SortNodeMemoryAddressesWithoutFullListSafetyCheckBoundsThrowsException()
 		{
 			using (NativeLinkedList<int> list = CreateNativeLinkedList(10, 30, 40, 50))

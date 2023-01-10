@@ -3259,10 +3259,9 @@ namespace JacksonDunstan.NativeCollections
 			// until the tail is reached
 			for (int curIndex = m_State->m_HeadIndex, startIndex = 0;
 				curIndex >= 0;
-				curIndex = m_State->m_NextIndexes[curIndex], startIndex++)
+				startIndex++)
 			{
-				// Never swap backwards. The part of the array up to startIndex
-				// is already in order.
+				// Swap if the value is later in the list than it should be
 				if (curIndex > startIndex)
 				{
 					T startValue = UnsafeUtility.ReadArrayElement<T>(
@@ -3278,6 +3277,11 @@ namespace JacksonDunstan.NativeCollections
 						m_State->m_Values,
 						curIndex,
 						startValue);
+				}
+				// Otherwise it's already in place and we continue
+				else
+				{
+					curIndex = m_State->m_NextIndexes[curIndex];
 				}
 			}
 

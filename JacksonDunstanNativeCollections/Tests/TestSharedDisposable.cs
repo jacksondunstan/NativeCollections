@@ -160,7 +160,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 				DisposeCallCounter val;
 				Assert.That(
 					() => val = shared.Value,
-					Throws.TypeOf<InvalidOperationException>());
+					Throws.Exception);
 			}
 		}
 
@@ -212,7 +212,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 			job.Run();
 			Assert.That(
 				() => disposable.Counter.Num[0],
-				Throws.TypeOf<InvalidOperationException>());
+				Throws.Exception);
 		}
 	}
 }

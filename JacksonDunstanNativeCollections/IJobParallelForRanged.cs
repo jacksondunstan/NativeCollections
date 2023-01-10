@@ -61,7 +61,11 @@ namespace JacksonDunstan.NativeCollections
 				{
 					jobReflectionData = JobsUtility.CreateJobReflectionData(
 						typeof(TJob),
+#if UNITY_2020_2_OR_NEWER
+						// Parameter removed in 2020.2
+#else
 						JobType.ParallelFor,
+#endif
 						(ExecuteJobFunction)Execute);
 				}
 				return jobReflectionData;
@@ -166,7 +170,13 @@ namespace JacksonDunstan.NativeCollections
 				UnsafeUtility.AddressOf(ref jobData),
 				ParallelForJobStruct<T>.Initialize(),
 				dependsOn,
-				ScheduleMode.Batched);
+#if UNITY_2020_2_OR_NEWER
+				// Parameter renamed in 2020.2
+				ScheduleMode.Parallel
+#else
+				ScheduleMode.Batched
+#endif
+			);
 			return JobsUtility.ScheduleParallelFor(
 				ref scheduleParams,
 				valuesLength,

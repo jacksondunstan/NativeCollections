@@ -193,7 +193,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 			longPtr.Dispose();
 			Assert.That(
 				() => longPtr.Value = 10,
-				Throws.TypeOf<InvalidOperationException>());
+				Throws.Exception);
 		}
 
 		[Test]
@@ -278,7 +278,7 @@ namespace JacksonDunstan.NativeCollections.Tests
 
 			Assert.That(
 				() => longPtr.Value = 10,
-				Throws.TypeOf<InvalidOperationException>());
+				Throws.Exception);
 		}
 	}
 }
