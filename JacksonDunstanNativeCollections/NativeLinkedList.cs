@@ -3253,53 +3253,98 @@ namespace JacksonDunstan.NativeCollections
 			RequireReadAccess();
 			RequireWriteAccess();
 			RequireFullListSafetyCheckBounds();
-
+			
 			// Swap the value for the head with the value for the first element,
 			// then the the node after the head that to the second element,
 			// until the tail is reached
+			int endIndex = m_State->m_Length - 1;
 			for (int curIndex = m_State->m_HeadIndex, startIndex = 0;
-				curIndex >= 0;
+				startIndex < endIndex;
 				startIndex++)
 			{
 				// Swap if the value is later in the list than it should be
-				if (curIndex > startIndex)
+				if (curIndex != startIndex)
 				{
-					T startValue = UnsafeUtility.ReadArrayElement<T>(
+					// Read start node
+					int oldStartNextIndex = m_State->m_NextIndexes[startIndex];
+					int oldStartPrevIndex = m_State->m_PrevIndexes[startIndex];
+					T oldStartValue = UnsafeUtility.ReadArrayElement<T>(
 						m_State->m_Values,
 						startIndex);
+					
+					// Read cur node
+					int oldCurNextIndex = m_State->m_NextIndexes[curIndex];
+					int oldCurPrevIndex = m_State->m_PrevIndexes[curIndex];
+					T oldCurValue = UnsafeUtility.ReadArrayElement<T>(
+						m_State->m_Values,
+						curIndex);
+
+					// Swap cur and start nodes
+					m_State->m_NextIndexes[startIndex] = oldCurNextIndex;
+					m_State->m_PrevIndexes[startIndex] = oldCurPrevIndex;
 					UnsafeUtility.WriteArrayElement(
 						m_State->m_Values,
 						startIndex,
-						UnsafeUtility.ReadArrayElement<T>(
-							m_State->m_Values,
-							curIndex));
+						oldCurValue);
+					m_State->m_NextIndexes[curIndex] = oldStartNextIndex;
+					m_State->m_PrevIndexes[curIndex] = oldStartPrevIndex;
 					UnsafeUtility.WriteArrayElement(
 						m_State->m_Values,
 						curIndex,
-						startValue);
+						oldStartValue);
+					
+					// Get the index to move cur to next, which might have been swapped
+					int newCurNextIndex = oldCurNextIndex == startIndex
+						? curIndex
+						: oldCurNextIndex == curIndex
+							? startIndex
+							: oldCurNextIndex;
+					
+					// Fix the nodes before and after start so that they point to start's
+					// new index
+					if (oldStartPrevIndex >= 0)
+					{
+						int newStartPrevIndex = oldStartPrevIndex == startIndex
+							? curIndex
+							: oldStartPrevIndex == curIndex
+								? startIndex
+								: oldStartPrevIndex;
+						m_State->m_NextIndexes[newStartPrevIndex] = curIndex;
+					}
+					if (oldStartNextIndex >= 0)
+					{
+						int newStartNextIndex = oldStartNextIndex == startIndex
+							? curIndex
+							: oldStartNextIndex == curIndex
+								? startIndex
+								: oldStartNextIndex;
+						m_State->m_PrevIndexes[newStartNextIndex] = curIndex;
+					}
+					
+					// Fix the nodes before and after cur so that they point to cur's
+					// new index
+					if (oldCurPrevIndex >= 0)
+					{
+						int newCurPrevIndex = oldCurPrevIndex == startIndex
+							? curIndex
+							: oldCurPrevIndex == startIndex
+								? curIndex
+								: oldCurPrevIndex;
+						m_State->m_NextIndexes[newCurPrevIndex] = startIndex;
+					}
+					if (oldCurNextIndex >= 0)
+					{
+						m_State->m_PrevIndexes[newCurNextIndex] = startIndex;
+					}
+					
+					// Advance cur
+					curIndex = newCurNextIndex;
 				}
 				// Otherwise it's already in place and we continue
 				else
 				{
 					curIndex = m_State->m_NextIndexes[curIndex];
 				}
-			}
-
-			int endIndex = m_State->m_Length - 1;
-
-			// Set all the next pointers to point to the next index now that
-			// the values are sequential. The last one points to null.
-			for (int i = 0; i <= endIndex; ++i)
-			{
-				m_State->m_NextIndexes[i] = i + 1;
-			}
-			m_State->m_NextIndexes[endIndex] = -1;
-
-			// Set all the prev pointers to point to the prev index now that
-			// the values are sequential
-			for (int i = 0; i <= endIndex; ++i)
-			{
-				m_State->m_PrevIndexes[i] = i - 1;
 			}
 
 			// The head is now at the beginning and the tail is now at the end
