@@ -1264,7 +1264,7 @@ namespace JacksonDunstan.NativeCollections
 						UnsafeUtility.MemCpy(
 							chunks,
 							m_State->m_Chunks,
-							sizeof(NativeChunkedListChunk) * numOldChunks);
+							sizeof(NativeChunkedListChunk*) * numOldChunks);
 
 						// Free the old chunk pointers
 						UnsafeUtility.Free(
